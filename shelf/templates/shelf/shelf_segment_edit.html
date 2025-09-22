@@ -1,0 +1,293 @@
+<!-- shelf/templates/shelf/shelf_segment_edit.html -->
+
+{% extends 'shelf/base.html' %}
+
+{% block title %}{{ title }} - 棚割りシステム{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="card-title mb-0">
+                        <i class="fas fa-cogs me-2"></i>{{ title }}
+                    </h4>
+                    <div class="shelf-info">
+                        <small>{{ shelf.width }} × {{ shelf.depth }} × {{ shelf.total_height }}cm</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>注意:</strong> 配置済み商品がある場合、その商品が収まる高さより小さくはできません。
+                </div>
+                
+                <form method="post" id="segmentForm">
+                    {% csrf_token %}
+                    
+                    <!-- 段一覧 -->
+                    <div class="segments-container">
+                        {% for segment in segments %}
+                            <div class="segment-edit-item mb-4" data-segment-id="{{ segment.id }}">
+                                <div class="row align-items-center">
+                                    <div class="col-md-2">
+                                        <div class="segment-label-edit">
+                                            <strong>段{{ segment.level }}</strong>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-3">
+                                        <label for="height_{{ segment.id }}" class="form-label">高さ (cm)</label>
+                                        <div class="input-group">
+                                            <input type="number" 
+                                                   class="form-control" 
+                                                   id="height_{{ segment.id }}"
+                                                   name="height_{{ segment.id }}"
+                                                   value="{{ segment.height|floatformat:1 }}"
+                                                   step="0.1"
+                                                   min="15.0"
+                                                   max="60.0"
+                                                   required>
+                                            <span class="input-group-text">cm</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-3">
+                                        <div class="segment-info">
+                                            <small class="text-muted">
+                                                <strong>配置商品:</strong> {{ segment.placements.count }}個<br>
+                                                <strong>利用可能幅:</strong> {{ segment.available_width|floatformat:1 }}cm
+                                            </small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4">
+                                        {% if segment.placements.exists %}
+                                            <div class="placed-products">
+                                                <small class="text-info">
+                                                    <i class="fas fa-boxes me-1"></i>配置商品:
+                                                </small>
+                                                {% for placement in segment.placements.all|slice:":3" %}
+                                                    <div class="badge bg-light text-dark me-1">
+                                                        {{ placement.product.name|truncatechars:15 }}
+                                                        <small>({{ placement.product.height }}cm)</small>
+                                                    </div>
+                                                {% endfor %}
+                                                {% if segment.placements.count > 3 %}
+                                                    <small class="text-muted">... 他{{ segment.placements.count|add:"-3" }}個</small>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <small class="text-muted">
+                                                <i class="fas fa-info-circle me-1"></i>配置商品なし
+                                            </small>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <!-- 段の最小高さ情報 -->
+                                {% if segment.placements.exists %}
+                                    {% with max_height=segment.placements.all|dictsort:"product.height"|last %}
+                                        <div class="row mt-2">
+                                            <div class="col-md-12">
+                                                <div class="alert alert-warning py-2">
+                                                    <small>
+                                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                                        <strong>最小必要高さ:</strong> {{ max_height.product.height }}cm 
+                                                        （商品「{{ max_height.product.name }}」）
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endwith %}
+                                {% endif %}
+                            </div>
+                            
+                            {% if not forloop.last %}
+                                <hr>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- 計算結果表示 -->
+                    <div class="calculation-result mt-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-calculator me-2"></i>計算結果
+                                </h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <strong>現在の合計高さ:</strong>
+                                        <span id="currentTotalHeight" class="text-primary">
+                                            {% widthratio segments|length 1 segments|first.height %}cm
+                                        </span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <strong>棚の総高さ:</strong>
+                                        <span class="text-info">{{ shelf.total_height }}cm</span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <strong>余裕:</strong>
+                                        <span id="heightDifference" class="text-success">
+                                            計算中...
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- ボタン -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{% url 'shelf:detail' shelf.id %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>キャンセル
+                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save me-2"></i>段高さを更新
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 操作のヒント -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="fas fa-lightbulb me-2"></i>操作のヒント
+                </h6>
+                <ul class="mb-0 small">
+                    <li>段高さは15cm〜60cmの範囲で設定できます</li>
+                    <li>配置済み商品がある場合、その商品の高さより小さくはできません</li>
+                    <li>すべての段の合計高さが棚の総高さを超えても問題ありません</li>
+                    <li>変更後は棚割り画面で配置を確認してください</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 段高さ変更時にリアルタイム計算
+    $('input[name^="height_"]').on('input', function() {
+        calculateTotalHeight();
+    });
+    
+    // 初期計算
+    calculateTotalHeight();
+    
+    // フォーム送信前の検証
+    $('#segmentForm').on('submit', function(e) {
+        if (!validateHeights()) {
+            e.preventDefault();
+            return false;
+        }
+    });
+});
+
+function calculateTotalHeight() {
+    let totalHeight = 0;
+    $('input[name^="height_"]').each(function() {
+        const height = parseFloat($(this).val()) || 0;
+        totalHeight += height;
+    });
+    
+    const shelfHeight = {{ shelf.total_height }};
+    const difference = shelfHeight - totalHeight;
+    
+    $('#currentTotalHeight').text(totalHeight.toFixed(1) + 'cm');
+    
+    const $differenceSpan = $('#heightDifference');
+    if (difference > 0) {
+        $differenceSpan.text('+' + difference.toFixed(1) + 'cm').removeClass('text-warning text-danger').addClass('text-success');
+    } else if (difference < 0) {
+        $differenceSpan.text(difference.toFixed(1) + 'cm').removeClass('text-success text-warning').addClass('text-danger');
+    } else {
+        $differenceSpan.text('ぴったり').removeClass('text-success text-danger').addClass('text-warning');
+    }
+}
+
+function validateHeights() {
+    let isValid = true;
+    let errors = [];
+    
+    $('input[name^="height_"]').each(function() {
+        const $input = $(this);
+        const height = parseFloat($input.val());
+        const segmentId = $input.attr('name').split('_')[1];
+        
+        // 範囲チェック
+        if (height < 15.0 || height > 60.0) {
+            isValid = false;
+            errors.push(`段の高さは15cm〜60cmの範囲で入力してください`);
+            $input.addClass('is-invalid');
+        } else {
+            $input.removeClass('is-invalid');
+        }
+    });
+    
+    if (!isValid) {
+        showError(errors.join('<br>'));
+    }
+    
+    return isValid;
+}
+</script>
+
+<style>
+.segment-edit-item {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fefefe;
+}
+
+.segment-label-edit {
+    background: var(--shelf-color);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.placed-products {
+    max-height: 80px;
+    overflow-y: auto;
+}
+
+.placed-products .badge {
+    margin-bottom: 2px;
+    display: inline-block;
+}
+
+.calculation-result {
+    position: sticky;
+    bottom: 20px;
+    z-index: 10;
+}
+
+.is-invalid {
+    border-color: #dc3545 !important;
+}
+
+@media (max-width: 768px) {
+    .segment-edit-item .row {
+        text-align: center;
+    }
+    
+    .segment-edit-item .col-md-2,
+    .segment-edit-item .col-md-3,
+    .segment-edit-item .col-md-4 {
+        margin-bottom: 15px;
+    }
+}
+</style>
+{% endblock %}

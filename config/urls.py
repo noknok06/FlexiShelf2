@@ -1,3 +1,5 @@
+# config/urls.py の更新内容
+
 """
 URL configuration for config project.
 
@@ -15,8 +17,22 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+from django.shortcuts import redirect
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('shelf/', include('shelf.urls')),
+    path('', lambda request: redirect('shelf:list')),  # ルートURLは棚一覧にリダイレクト
 ]
+
+# 開発環境でのメディアファイル配信
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Django Admin サイトのカスタマイズ
+admin.site.site_header = "棚割りシステム 管理画面"
+admin.site.site_title = "棚割りシステム"
+admin.site.index_title = "システム管理"

@@ -1,0 +1,336 @@
+<!-- shelf/templates/shelf/shelf_create.html -->
+
+{% extends 'shelf/base.html' %}
+
+{% block title %}{{ title }} - 棚割りシステム{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="card-title mb-0">
+                    <i class="fas fa-plus me-2"></i>{{ title }}
+                </h4>
+            </div>
+            
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    
+                    <!-- 基本情報 -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h5 class="border-bottom pb-2 mb-3">
+                                <i class="fas fa-info-circle me-2"></i>基本情報
+                            </h5>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.name.id_for_label }}" class="form-label">
+                                    <i class="fas fa-tag me-1"></i>棚名 <span class="text-danger">*</span>
+                                </label>
+                                {{ form.name }}
+                                {% if form.name.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.name.errors.0 }}
+                                    </div>
+                                {% endif %}
+                                <div class="form-text">
+                                    例: エンド陳列棚A、冷蔵ケース1号機など
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.description.id_for_label }}" class="form-label">
+                                    <i class="fas fa-edit me-1"></i>説明
+                                </label>
+                                {{ form.description }}
+                                {% if form.description.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.description.errors.0 }}
+                                    </div>
+                                {% endif %}
+                                <div class="form-text">
+                                    棚の特徴や設置場所などを記入してください
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- サイズ設定 -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h5 class="border-bottom pb-2 mb-3">
+                                <i class="fas fa-ruler-combined me-2"></i>サイズ設定
+                            </h5>
+                            
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="{{ form.width.id_for_label }}" class="form-label">
+                                            <i class="fas fa-arrows-alt-h me-1"></i>幅 (cm) <span class="text-danger">*</span>
+                                        </label>
+                                        <div class="input-group">
+                                            {{ form.width }}
+                                            <span class="input-group-text">cm</span>
+                                        </div>
+                                        {% if form.width.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.width.errors.0 }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="{{ form.depth.id_for_label }}" class="form-label">
+                                            <i class="fas fa-arrows-alt-v me-1"></i>奥行 (cm) <span class="text-danger">*</span>
+                                        </label>
+                                        <div class="input-group">
+                                            {{ form.depth }}
+                                            <span class="input-group-text">cm</span>
+                                        </div>
+                                        {% if form.depth.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.depth.errors.0 }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="{{ form.total_height.id_for_label }}" class="form-label">
+                                            <i class="fas fa-arrows-alt me-1"></i>高さ (cm) <span class="text-danger">*</span>
+                                        </label>
+                                        <div class="input-group">
+                                            {{ form.total_height }}
+                                            <span class="input-group-text">cm</span>
+                                        </div>
+                                        {% if form.total_height.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.total_height.errors.0 }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-lightbulb me-2"></i>
+                                <strong>ヒント:</strong> 
+                                一般的なスーパーの棚は幅120-180cm、奥行40-50cm、高さ180-220cm程度です。
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- プレビュー -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h5 class="border-bottom pb-2 mb-3">
+                                <i class="fas fa-eye me-2"></i>プレビュー
+                            </h5>
+                            
+                            <div class="preview-container bg-light p-4 rounded text-center">
+                                <div id="shelfPreview" class="shelf-preview-box mx-auto">
+                                    <div class="preview-shelf" style="background: var(--shelf-color); border-radius: 4px; position: relative;">
+                                        <div class="preview-segments">
+                                            <!-- JavaScriptで段を表示 -->
+                                        </div>
+                                        <div class="preview-dimensions mt-2">
+                                            <small class="text-muted" id="previewText">
+                                                棚のサイズを入力すると、ここにプレビューが表示されます
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- ボタン -->
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between">
+                                <a href="{% url 'shelf:list' %}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left me-1"></i>キャンセル
+                                </a>
+                                <button type="submit" class="btn btn-shelf btn-lg">
+                                    <i class="fas fa-plus me-2"></i>棚を作成する
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 作成後の段構成について -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="fas fa-info-circle me-2"></i>作成後について
+                </h6>
+                <p class="card-text small text-muted mb-0">
+                    棚作成後、デフォルトで4段構成で作成されます。
+                    段の高さや数は後から「段設定」で調整可能です。
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // フォーム入力時にプレビューを更新
+        $('#{{ form.width.id_for_label }}, #{{ form.depth.id_for_label }}, #{{ form.total_height.id_for_label }}').on('input', updatePreview);
+        
+        // 初期プレビュー
+        updatePreview();
+    });
+    
+    function updatePreview() {
+        const width = parseFloat($('#{{ form.width.id_for_label }}').val()) || 0;
+        const depth = parseFloat($('#{{ form.depth.id_for_label }}').val()) || 0;
+        const height = parseFloat($('#{{ form.total_height.id_for_label }}').val()) || 0;
+        
+        const previewContainer = $('#shelfPreview');
+        const previewShelf = previewContainer.find('.preview-shelf');
+        const previewText = $('#previewText');
+        
+        if (width > 0 && depth > 0 && height > 0) {
+            // サイズを適切にスケール（最大300px幅）
+            const maxWidth = 300;
+            const scale = Math.min(maxWidth / width, 2.0);
+            const displayWidth = width * scale;
+            const displayHeight = height * scale;
+            
+            previewShelf.css({
+                'width': displayWidth + 'px',
+                'height': displayHeight + 'px',
+                'display': 'block'
+            });
+            
+            // デフォルトの段構成を表示
+            const segmentHeights = [30, 35, 35, 40]; // デフォルト段高さ
+            const segmentContainer = previewShelf.find('.preview-segments');
+            segmentContainer.empty();
+            
+            segmentHeights.forEach(function(segmentHeight, index) {
+                const segmentDisplayHeight = segmentHeight * scale;
+                const segment = $(`
+                    <div class="preview-segment" style="
+                        width: 100%;
+                        height: ${segmentDisplayHeight}px;
+                        border-bottom: 1px solid rgba(255,255,255,0.3);
+                        background: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(0,0,0,0.1));
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: ${Math.max(8, 10 * scale)}px;
+                        font-weight: bold;
+                    ">
+                        段${index + 1} (${segmentHeight}cm)
+                    </div>
+                `);
+                segmentContainer.append(segment);
+            });
+            
+            previewText.html(`
+                <strong>プレビュー:</strong> ${width} × ${depth} × ${height} cm<br>
+                <small>デフォルト4段構成で作成されます</small>
+            `);
+        } else {
+            previewShelf.css('display', 'none');
+            previewText.text('棚のサイズを入力すると、ここにプレビューが表示されます');
+        }
+    }
+    
+    // フォーム検証の強化
+    $('form').on('submit', function(e) {
+        let hasError = false;
+        
+        // 必須項目チェック
+        const requiredFields = ['{{ form.name.id_for_label }}', '{{ form.width.id_for_label }}', '{{ form.depth.id_for_label }}', '{{ form.total_height.id_for_label }}'];
+        
+        requiredFields.forEach(function(fieldId) {
+            const field = $('#' + fieldId);
+            const value = field.val().trim();
+            
+            if (!value) {
+                field.addClass('is-invalid');
+                hasError = true;
+            } else {
+                field.removeClass('is-invalid');
+            }
+        });
+        
+        // 数値範囲チェック
+        const width = parseFloat($('#{{ form.width.id_for_label }}').val());
+        const depth = parseFloat($('#{{ form.depth.id_for_label }}').val());
+        const height = parseFloat($('#{{ form.total_height.id_for_label }}').val());
+        
+        if (width && (width < 30 || width > 300)) {
+            showError('棚幅は30cm以上300cm以下で入力してください。');
+            hasError = true;
+        }
+        
+        if (height && (height < 80 || height > 250)) {
+            showError('棚高さは80cm以上250cm以下で入力してください。');
+            hasError = true;
+        }
+        
+        if (hasError) {
+            e.preventDefault();
+            return false;
+        }
+    });
+</script>
+
+<style>
+    .preview-container {
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .shelf-preview-box {
+        max-width: 400px;
+    }
+    
+    .preview-shelf {
+        min-height: 100px;
+        display: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    .preview-segments {
+        height: 100%;
+        display: flex;
+        flex-direction: column-reverse; /* 下から上に段を表示 */
+    }
+    
+    .is-invalid {
+        border-color: #dc3545 !important;
+    }
+    
+    .form-text {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .input-group-text {
+        background-color: #f8f9fa;
+        border-color: #ced4da;
+    }
+    
+    .card-header.bg-primary {
+        background: linear-gradient(135deg, #007bff, #0056b3) !important;
+    }
+</style>
+{% endblock %}
