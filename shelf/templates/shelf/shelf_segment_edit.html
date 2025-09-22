@@ -90,18 +90,20 @@
                                 
                                 <!-- 段の最小高さ情報 -->
                                 {% if segment.placements.exists %}
-                                    {% with max_height=segment.placements.all|dictsort:"product.height"|last %}
-                                        <div class="row mt-2">
-                                            <div class="col-md-12">
-                                                <div class="alert alert-warning py-2">
-                                                    <small>
-                                                        <i class="fas fa-exclamation-triangle me-1"></i>
-                                                        <strong>最小必要高さ:</strong> {{ max_height.product.height }}cm 
-                                                        （商品「{{ max_height.product.name }}」）
-                                                    </small>
+                                    {% with max_height_placement=segment.placements.all|dictsortreversed:"product.height"|first %}
+                                        {% if max_height_placement %}
+                                            <div class="row mt-2">
+                                                <div class="col-md-12">
+                                                    <div class="alert alert-warning py-2">
+                                                        <small>
+                                                            <i class="fas fa-exclamation-triangle me-1"></i>
+                                                            <strong>最小必要高さ:</strong> {{ max_height_placement.product.height }}cm 
+                                                            （商品「{{ max_height_placement.product.name }}」）
+                                                        </small>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        {% endif %}
                                     {% endwith %}
                                 {% endif %}
                             </div>
@@ -123,7 +125,7 @@
                                     <div class="col-md-4">
                                         <strong>現在の合計高さ:</strong>
                                         <span id="currentTotalHeight" class="text-primary">
-                                            {% widthratio segments|length 1 segments|first.height %}cm
+                                            計算中...
                                         </span>
                                     </div>
                                     <div class="col-md-4">
@@ -221,7 +223,6 @@ function validateHeights() {
     $('input[name^="height_"]').each(function() {
         const $input = $(this);
         const height = parseFloat($input.val());
-        const segmentId = $input.attr('name').split('_')[1];
         
         // 範囲チェック
         if (height < 15.0 || height > 60.0) {
@@ -238,6 +239,16 @@ function validateHeights() {
     }
     
     return isValid;
+}
+
+function showError(message) {
+    const alertHtml = `
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('.container .row').prepend(alertHtml);
 }
 </script>
 

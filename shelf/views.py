@@ -1,4 +1,4 @@
-# shelf/views.py の修正版
+# shelf/views.py の完全修正版
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
@@ -7,7 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db import models  # 追加：modelsインポート
+from django.db.models import Max
 import json
 from .models import Shelf, ShelfSegment, Product, ProductPlacement
 from .forms import ShelfCreateForm, ProductPlacementForm, ShelfSegmentForm
@@ -100,21 +100,19 @@ def place_product_ajax(request):
         
         # 重複チェック
         required_width = product.width * face_count
-        
-        # X座標範囲の計算
         start_x = max(0, x_position)
         end_x = start_x + required_width
         
         # 既存の配置との重複をチェック
         overlapping = ProductPlacement.objects.filter(
             segment=segment
-        ).exclude(pk=None)  # 新規配置なので除外するIDはない
+        )
         
         for existing_placement in overlapping:
             existing_start = existing_placement.x_position
             existing_end = existing_start + existing_placement.occupied_width
             
-            # 重複判定：新しい配置の終端が既存の開始点より大きく、かつ新しい配置の開始点が既存の終端より小さい場合は重複
+            # 重複判定
             if end_x > existing_start and start_x < existing_end:
                 return JsonResponse({
                     'success': False,
@@ -129,9 +127,10 @@ def place_product_ajax(request):
             })
         
         # 配置順序を設定
-        max_order = ProductPlacement.objects.filter(segment=segment).aggregate(
-            max_order=models.Max('placement_order')
-        )['placement_order__max'] or 0
+        max_order_result = ProductPlacement.objects.filter(segment=segment).aggregate(
+            max_order=Max('placement_order')
+        )
+        max_order = max_order_result['max_order'] or 0
         
         # 商品を配置
         placement = ProductPlacement.objects.create(
@@ -163,18 +162,47 @@ def update_placement_ajax(request):
     try:
         data = json.loads(request.body)
         placement_id = data.get('placement_id')
-        x_position = float(data.get('x_position', 0))
-        face_count = int(data.get('face_count', 1))
+        x_position = data.get('x_position')
+        face_count = data.get('face_count')
+        face_count_change = data.get('face_count_change')  # フェーシング変更用
+        segment_id = data.get('segment_id')  # 段間移動用
         
         placement = get_object_or_404(ProductPlacement, id=placement_id)
         
-        # 一時的に現在の配置を保存
-        old_x_position = placement.x_position
-        old_face_count = placement.face_count
+        # 段間移動の場合
+        if segment_id is not None:
+            new_segment = get_object_or_404(ShelfSegment, id=segment_id, shelf=placement.shelf)
+            
+            # 新しい段に移動可能かチェック
+            if not new_segment.can_fit_product(placement.product, placement.face_count):
+                return JsonResponse({
+                    'success': False,
+                    'error': f'段{new_segment.level}には商品が収まりません（高さ制限）'
+                })
+            
+            # 段を変更
+            placement.segment = new_segment
         
-        # 新しい値での重複チェック
-        required_width = placement.product.width * face_count
-        start_x = max(0, x_position)
+        # 現在の値を取得
+        current_x = placement.x_position
+        current_face_count = placement.face_count
+        
+        # 新しい値を決定
+        if x_position is not None:
+            new_x_position = float(x_position)
+        else:
+            new_x_position = current_x
+            
+        if face_count is not None:
+            new_face_count = int(face_count)
+        elif face_count_change is not None:
+            new_face_count = max(1, min(10, current_face_count + int(face_count_change)))
+        else:
+            new_face_count = current_face_count
+        
+        # 新しい値での制約チェック
+        required_width = placement.product.width * new_face_count
+        start_x = max(0, new_x_position)
         end_x = start_x + required_width
         
         # 棚幅チェック
@@ -201,12 +229,13 @@ def update_placement_ajax(request):
         
         # 更新実行
         placement.x_position = start_x
-        placement.face_count = face_count
+        placement.face_count = new_face_count
         placement.save()
         
         return JsonResponse({
             'success': True,
-            'message': f'配置を更新しました（位置: {start_x:.1f}cm, {face_count}フェース）'
+            'message': f'配置を更新しました（位置: {start_x:.1f}cm, {new_face_count}フェース）',
+            'new_face_count': new_face_count
         })
         
     except Exception as e:
@@ -257,9 +286,10 @@ def shelf_segment_edit(request, shelf_id):
                         new_height = float(request.POST.get(height_key, segment.height))
                         
                         # 配置済み商品の高さチェック
-                        max_product_height = segment.placements.aggregate(
-                            max_height=models.Max('product__height')
-                        )['max_height'] or 0
+                        max_height_result = segment.placements.aggregate(
+                            max_height=Max('product__height')
+                        )
+                        max_product_height = max_height_result['max_height'] or 0
                         
                         if new_height < max_product_height:
                             messages.error(

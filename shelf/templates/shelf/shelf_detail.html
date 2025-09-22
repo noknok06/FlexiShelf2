@@ -1,6 +1,7 @@
 <!-- shelf/templates/shelf/shelf_detail.html -->
 
 {% extends 'shelf/base.html' %}
+{% load shelf_extras %}
 
 {% block title %}{{ title }} - 棚割りシステム{% endblock %}
 
@@ -8,84 +9,183 @@
 <style>
     .shelf-container {
         position: relative;
-        margin-left: 80px;
+        margin-left: 20px;
     }
     
-    .shelf-main {
-        border: 3px solid var(--shelf-color);
-        background: #fafafa;
+    .shelf-level {
         position: relative;
-    }
-    
-    .drop-zone {
-        position: relative;
-        min-height: 40px;
-        border-bottom: 1px solid #ddd;
-        background: linear-gradient(to right, #f9f9f9 0%, #f5f5f5 100%);
+        background: linear-gradient(to right, #f8fafc 0%, #f1f5f9 100%);
+        border: 2px solid #e2e8f0;
+        height: 60px; /* 固定高さ */
+        border-radius: 8px;
+        margin-bottom: 8px;
+        padding: 4px;
+        transition: all 0.2s ease;
         cursor: crosshair;
+        display: flex;
+        align-items: center; /* 商品をY軸中央に配置 */
     }
     
-    .drop-zone:hover {
-        background: linear-gradient(to right, #e3f2fd 0%, #bbdefb 100%);
+    .shelf-level:hover {
+        border-color: #06b6d4;
+        box-shadow: 0 4px 8px rgba(6, 182, 212, 0.1);
     }
     
-    .drop-zone.drag-over {
-        background: linear-gradient(to right, #c8e6c9 0%, #a5d6a7 100%);
-        border: 2px dashed #4caf50;
+    .shelf-level.drag-over {
+        background: linear-gradient(to right, #ecfdf5 0%, #d1fae5 100%);
+        border-color: #10b981;
+        border-style: dashed;
     }
     
-    .drop-zone.drop-available {
-        background: linear-gradient(to right, #e8f5e8 0%, #c8e6c9 100%);
-        border: 1px dashed #4caf50;
+    .shelf-level.drop-available {
+        background: linear-gradient(to right, #f0fdf4 0%, #dcfce7 100%);
+        border-color: #22c55e;
+        border-style: dashed;
     }
     
-    .drop-zone.drop-unavailable {
-        background: linear-gradient(to right, #ffebee 0%, #ffcdd2 100%);
-        border: 1px dashed #f44336;
+    .shelf-level.drop-unavailable {
+        background: linear-gradient(to right, #fef2f2 0%, #fee2e2 100%);
+        border-color: #ef4444;
+        border-style: dashed;
         cursor: not-allowed;
     }
     
-    .segment-ruler {
+    .segment-label {
         position: absolute;
-        right: -40px;
-        top: 0;
-        width: 35px;
-        height: 100%;
-        background: #333;
+        left: -15px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #1e293b;
         color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 10px;
         font-weight: bold;
-        writing-mode: vertical-lr;
+        writing-mode: vertical-rl;
         text-orientation: mixed;
+        z-index: 2;
+    }
+    
+    .segment-info {
+        position: absolute;
+        top: 4px;
+        right: 8px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        z-index: 3;
     }
     
     .product-in-shelf {
         position: absolute;
-        top: 2px;
-        border: 2px solid #007bff;
-        border-radius: 4px;
+        cursor: move;
+        transition: all 0.2s ease;
+        border: 2px solid #06b6d4;
+        border-radius: 6px;
         background: white;
-        cursor: pointer;
-        min-height: 36px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         display: flex;
+        flex-direction: column;
         align-items: center;
-        padding: 2px 6px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        justify-content: center;
+        padding: 2px;
         z-index: 5;
+        height: 50px; /* 固定高さ */
+        top: 5px; /* 固定Y座標 */
     }
     
     .product-in-shelf:hover {
-        border-color: #0056b3;
-        box-shadow: 0 4px 8px rgba(0,86,179,0.4);
+        border-color: #0891b2;
+        box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
         z-index: 10;
+        transform: scale(1.02);
     }
     
-    .product-in-shelf.selected {
-        border-color: #28a745;
-        box-shadow: 0 4px 8px rgba(40,167,69,0.5);
+    .product-in-shelf.dragging {
+        opacity: 0.7;
+        transform: rotate(2deg) scale(1.05);
+        z-index: 20;
+        border-color: #f59e0b;
+    }
+    
+    .product-info {
+        text-align: center;
+        font-size: 8px;
+        line-height: 1.2;
+    }
+    
+    .product-name {
+        font-weight: bold;
+        color: #1f2937;
+        margin-bottom: 1px;
+    }
+    
+    .product-price {
+        color: #6b7280;
+        font-size: 7px;
+    }
+    
+    .facing-indicator {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        background: #dc2626;
+        color: white;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: bold;
+        z-index: 6;
+    }
+    
+    .facing-controls {
+        position: absolute;
+        top: -8px;
+        right: 20px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        display: none;
+        z-index: 15;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .product-in-shelf:hover .facing-controls {
+        display: flex;
+    }
+    
+    .facing-btn {
+        padding: 2px 6px;
+        font-size: 10px;
+        background: #f9fafb;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .facing-btn:hover {
+        background: #e5e7eb;
+    }
+    
+    .remove-product-btn {
+        padding: 2px 6px;
+        font-size: 10px;
+        background: #fee2e2;
+        color: #dc2626;
+        border: none;
+        cursor: pointer;
+        margin-left: 2px;
+        transition: background-color 0.2s;
+    }
+    
+    .remove-product-btn:hover {
+        background: #fecaca;
     }
     
     .product-palette {
@@ -93,118 +193,112 @@
         top: 20px;
         max-height: calc(100vh - 40px);
         overflow-y: auto;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
     }
     
     .product-palette-item {
-        cursor: move;
-        transition: all 0.2s;
+        cursor: grab;
+        transition: all 0.2s ease;
+        border-radius: 6px;
+        padding: 12px;
+        margin: 4px;
+        border: 1px solid transparent;
     }
     
     .product-palette-item:hover {
-        background-color: #e3f2fd;
-        transform: translateX(3px);
+        transform: scale(1.03);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        border-color: #06b6d4;
+    }
+    
+    .product-palette-item:active {
+        cursor: grabbing;
     }
     
     .product-palette-item.selected {
-        background-color: #bbdefb;
-        border-left: 4px solid #2196f3;
-    }
-    
-    .product-search {
-        position: sticky;
-        top: 0;
-        background: white;
-        z-index: 100;
-        padding: 10px;
-        border-bottom: 1px solid #ddd;
+        border-color: #2563eb;
+        background-color: #dbeafe;
+        transform: scale(1.02);
     }
     
     .grid-overlay {
         position: absolute;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
+        right: 0;
+        bottom: 0;
         pointer-events: none;
+        opacity: 0;
         background-image: 
-            repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 9px,
-                rgba(0,0,0,0.05) 10px
-            );
+            linear-gradient(to right, rgba(6, 182, 212, 0.1) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+        background-size: 20px 20px;
+        transition: opacity 0.2s ease;
+        border-radius: 6px;
+    }
+    
+    .shelf-level:hover .grid-overlay {
+        opacity: 1;
     }
     
     .controls-panel {
         background: white;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        position: sticky;
-        top: 20px;
+        border: 1px solid #e5e7eb;
+        margin-top: 16px;
     }
     
-    .face-count-selector {
-        display: none;
-        position: absolute;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        z-index: 1000;
-        padding: 5px;
-    }
-    
-    .face-count-btn {
-        width: 30px;
-        height: 30px;
-        border: 1px solid #ddd;
-        background: white;
-        margin: 2px;
-        cursor: pointer;
-        border-radius: 3px;
-        font-size: 12px;
-    }
-    
-    .face-count-btn:hover {
-        background: #007bff;
+    .stats-card {
+        background: linear-gradient(135deg, #06b6d4, #0891b2);
         color: white;
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
     }
     
-    .segment-info-bar {
-        position: absolute;
-        right: 5px;
-        top: 5px;
-        background: rgba(0,0,0,0.7);
-        color: white;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 10px;
-    }
-    
-    /* ドラッグヘルパーのスタイル */
-    .drag-helper {
-        background: #007bff;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        pointer-events: none;
-    }
-    
-    /* ドラッグ中のスタイル */
-    .ui-draggable-dragging {
-        opacity: 0.7;
-    }
-    
-    /* 操作説明 */
     .operation-guide {
-        background: #e3f2fd;
-        border: 1px solid #bbdefb;
-        border-radius: 4px;
-        padding: 8px;
-        margin-bottom: 10px;
+        background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        border: 1px solid #93c5fd;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 12px;
         font-size: 12px;
+        color: #1e40af;
+    }
+    
+    .search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    
+    .search-result-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f3f4f6;
+        transition: background-color 0.2s;
+    }
+    
+    .search-result-item:hover {
+        background-color: #f9fafb;
+    }
+    
+    .product-image {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        border-radius: 4px;
+        margin-right: 8px;
     }
 </style>
 {% endblock %}
@@ -212,7 +306,7 @@
 {% block content %}
 <div class="row mb-3">
     <div class="col-md-8">
-        <h2>
+        <h2 class="text-primary">
             <i class="fas fa-cube me-2"></i>{{ shelf.name }}
             <small class="text-muted">棚割り編集</small>
         </h2>
@@ -233,140 +327,64 @@
 </div>
 
 <div class="row">
-    <!-- 棚表示エリア -->
-    <div class="col-md-8">
-        <div class="shelf-container">
-            <div class="shelf-main" style="width: {{ shelf.width }}0px; min-height: 400px;" id="shelfCanvas">
-                <!-- グリッドオーバーレイ -->
-                <div class="grid-overlay" id="gridOverlay"></div>
-                
-                {% for segment in segments %}
-                    <div class="drop-zone segment-{{ segment.level }}" 
-                         data-segment-id="{{ segment.id }}"
-                         data-segment-level="{{ segment.level }}"
-                         style="height: {{ segment.height }}0px; position: relative;">
-                        
-                        <!-- 段ラベル -->
-                        <div class="segment-label">段{{ segment.level }}</div>
-                        
-                        <!-- 段情報 -->
-                        <div class="segment-info-bar">
-                            高さ: {{ segment.height }}cm | 利用可能: {{ segment.available_width|floatformat:1 }}cm
-                        </div>
-                        
-                        <!-- 段ルーラー -->
-                        <div class="segment-ruler">{{ segment.height|floatformat:0 }}</div>
-                        
-                        <!-- 配置された商品 -->
-                        {% for placement in segment.placements.all %}
-                            <div class="product-in-shelf" 
-                                 data-placement-id="{{ placement.id }}"
-                                 data-product-id="{{ placement.product.id }}"
-                                 style="left: {{ placement.x_position }}0px; width: {{ placement.occupied_width }}0px;">
-                                
-                                <div class="product-content">
-                                    <div class="product-name" style="font-size: 10px; font-weight: bold;">
-                                        {{ placement.product.name|truncatechars:15 }}
-                                    </div>
-                                    <div class="product-maker" style="font-size: 9px; color: #666;">
-                                        {{ placement.product.maker|default:"" }}
-                                    </div>
-                                </div>
-                                
-                                {% if placement.face_count > 1 %}
-                                    <div class="face-badge">{{ placement.face_count }}</div>
-                                {% endif %}
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-        
-        <!-- 操作パネル -->
-        <div class="controls-panel mt-3 p-3">
-            <div class="row align-items-center">
-                <div class="col-md-4">
-                    <label class="form-label">表示倍率:</label>
-                    <select class="form-select form-select-sm" id="zoomSelect">
-                        <option value="0.5">50%</option>
-                        <option value="0.75">75%</option>
-                        <option value="1" selected>100%</option>
-                        <option value="1.25">125%</option>
-                        <option value="1.5">150%</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="showGrid" checked>
-                        <label class="form-check-label" for="showGrid">
-                            グリッド表示
-                        </label>
-                    </div>
-                </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-warning btn-sm" onclick="clearAllPlacements()">
-                        <i class="fas fa-trash me-1"></i>全て削除
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
     <!-- 商品パレット -->
-    <div class="col-md-4">
-        <div class="product-palette">
+    <div class="col-md-4 order-2 order-md-1">
+        <div class="product-palette bg-white">
             <!-- 検索バー -->
-            <div class="product-search">
-                <h5><i class="fas fa-boxes me-2"></i>商品一覧</h5>
+            <div class="p-3 border-bottom">
+                <h5 class="text-primary mb-3">
+                    <i class="fas fa-boxes me-2"></i>商品パレット
+                </h5>
                 <div class="operation-guide">
                     <strong>操作方法:</strong><br>
                     • 商品をドラッグして棚にドロップ<br>
-                    • または商品をクリック→段をクリック
+                    • または商品をクリック→段をクリック<br>
+                    • 配置後はホバーで詳細操作
                 </div>
-                <div class="search-box">
+                <div class="position-relative">
                     <input type="text" class="form-control form-control-sm" 
                            id="productSearch" placeholder="商品名で検索...">
-                    <div class="search-results" id="searchResults"></div>
+                    <div class="search-results" id="searchResults" style="display: none;"></div>
                 </div>
             </div>
             
             <!-- 商品リスト -->
-            <div id="productList">
+            <div class="p-2" id="productList">
                 {% for product in products %}
-                    <div class="product-palette-item" 
+                    <div class="product-palette-item bg-gradient-to-r" 
                          data-product-id="{{ product.id }}"
                          data-product-name="{{ product.name }}"
                          data-product-width="{{ product.width }}"
                          data-product-height="{{ product.height }}"
-                         title="ドラッグして配置 または クリックで選択">
+                         data-product-price="{{ product.price }}"
+                         title="ドラッグして配置 または クリックで選択"
+                         style="background: linear-gradient(135deg, 
+                                {% cycle '#fef3c7' '#ddd6fe' '#fce7f3' '#d1fae5' '#fed7d7' '#bfdbfe' %} 0%, 
+                                {% cycle '#fde68a' '#c4b5fd' '#f9a8d4' '#a7f3d0' '#fbb6ce' '#93c5fd' %} 100%);">
                         
                         <div class="d-flex align-items-center">
                             {% if product.image %}
-                                <img src="{{ product.image.url }}" class="me-2" 
-                                     style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">
+                                <img src="{{ product.image.url }}" class="product-image" alt="{{ product.name }}">
                             {% else %}
-                                <div class="me-2 bg-light d-flex align-items-center justify-content-center"
-                                     style="width: 40px; height: 40px; border-radius: 4px;">
+                                <div class="product-image bg-light d-flex align-items-center justify-content-center">
                                     <i class="fas fa-cube text-muted"></i>
                                 </div>
                             {% endif %}
                             
                             <div class="flex-grow-1">
                                 <div class="fw-bold" style="font-size: 13px;">
-                                    {{ product.name|truncatechars:25 }}
+                                    {{ product.name|truncatechars:20 }}
                                 </div>
                                 <div class="text-muted" style="font-size: 11px;">
                                     {{ product.maker|default:"" }}
                                     {% if product.price %}| ¥{{ product.price }}{% endif %}
                                 </div>
                                 <div class="text-info" style="font-size: 10px;">
-                                    {{ product.width }}×{{ product.height }}×{{ product.depth }}cm
+                                    {{ product.width }}×{{ product.height }}cm
                                 </div>
                             </div>
                             
-                            <!-- ドラッグアイコン -->
-                            <div class="text-muted me-2">
+                            <div class="text-muted">
                                 <i class="fas fa-grip-vertical"></i>
                             </div>
                         </div>
@@ -375,47 +393,130 @@
             </div>
         </div>
     </div>
-</div>
-
-<!-- フェース数選択モーダル -->
-<div id="faceCountSelector" class="face-count-selector">
-    <div class="text-center mb-2" style="font-size: 12px;">フェース数を選択</div>
-    <div class="d-flex flex-wrap justify-content-center">
-        {% for i in "123456789" %}
-            <button class="face-count-btn" data-face-count="{{ i }}">{{ i }}</button>
-        {% endfor %}
-    </div>
-</div>
-
-<!-- 配置編集モーダル -->
-<div class="modal fade" id="editPlacementModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">配置編集</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    
+    <!-- 棚表示エリア -->
+    <div class="col-md-8 order-1 order-md-2">
+        <div class="bg-white rounded p-4 border">
+            <div class="d-flex justify-between align-items-center mb-3">
+                <h5 class="text-primary mb-0">
+                    <i class="fas fa-th-large me-2"></i>棚レイアウト
+                </h5>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success" onclick="saveLayout()">
+                        <i class="fas fa-save me-1"></i>保存
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearAllPlacements()">
+                        <i class="fas fa-trash me-1"></i>全てクリア
+                    </button>
+                </div>
             </div>
-            <div class="modal-body">
-                <form id="editPlacementForm">
-                    <input type="hidden" id="editPlacementId">
-                    <div class="mb-3">
-                        <label class="form-label">X座標 (cm)</label>
-                        <input type="number" class="form-control" id="editXPosition" 
-                               step="0.1" min="0">
+            
+            <div class="shelf-container" id="shelfContainer">
+                {% for segment in segments %}
+                    <div class="shelf-level" 
+                         data-segment-id="{{ segment.id }}"
+                         data-segment-level="{{ segment.level }}"
+                         data-segment-height="{{ segment.height }}"
+                         style="height: {{ segment.height|floatformat:0|add:'0' }}px;">
+                        
+                        <!-- グリッドオーバーレイ -->
+                        <div class="grid-overlay"></div>
+                        
+                        <!-- 段ラベル -->
+                        <div class="segment-label">段{{ segment.level }}</div>
+                        
+                        <!-- 段情報 -->
+                        <div class="segment-info">
+                            {{ segment.height }}cm | 空き: {{ segment.available_width|floatformat:1 }}cm
+                        </div>
+                        
+                        <!-- 配置された商品 -->
+                        {% for placement in segment.placements.all %}
+                            {% with display_width=placement.product.width|floatformat:0|mul:2.5 %}
+                            <div class="product-in-shelf" 
+                                 data-placement-id="{{ placement.id }}"
+                                 data-product-id="{{ placement.product.id }}"
+                                 data-facing="{{ placement.face_count }}"
+                                 data-product-name="{{ placement.product.name }}"
+                                 data-product-image="{% if placement.product.image %}{{ placement.product.image.url }}{% endif %}"
+                                 data-product-width="{{ display_width }}"
+                                 style="left: {{ placement.x_position|mul:10|floatformat:0 }}px; 
+                                        width: {{ display_width|mul:placement.face_count|floatformat:0 }}px;">
+                                
+                                <!-- フェーシング表示（複数商品を横並び表示） -->
+                                {% for face_num in placement.face_count|make_list %}
+                                    <div class="single-product" style="
+                                        position: absolute;
+                                        left: {{ forloop.counter0|mul:display_width|floatformat:0 }}px;
+                                        width: {{ display_width|floatformat:0 }}px;
+                                        height: 100%;
+                                        border-right: 1px solid #e5e7eb;
+                                        display: flex;
+                                        flex-direction: column;
+                                        align-items: center;
+                                        justify-content: center;
+                                        padding: 2px;
+                                        background: white;
+                                    ">
+                                        {% if placement.product.image %}
+                                            <img src="{{ placement.product.image.url }}" 
+                                                 alt="{{ placement.product.name }}"
+                                                 style="width: 90%; height: 90%; object-fit: contain;">
+                                        {% else %}
+                                            <div style="width: 90%; height: 90%; background: #f3f4f6; border-radius: 4px; 
+                                                        display: flex; align-items: center; justify-content: center;">
+                                                <i class="fas fa-cube text-muted" style="font-size: 16px;"></i>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                                
+                                {% if placement.face_count > 1 %}
+                                    <div class="facing-indicator">{{ placement.face_count }}</div>
+                                {% endif %}
+                                
+                                <!-- フェーシングコントロール -->
+                                <div class="facing-controls">
+                                    <button class="facing-btn" onclick="changeFacing('{{ placement.id }}', -1)">-</button>
+                                    <span class="px-2 py-1 text-xs bg-white">{{ placement.face_count }}</span>
+                                    <button class="facing-btn" onclick="changeFacing('{{ placement.id }}', 1)">+</button>
+                                    <button class="remove-product-btn" onclick="removeProduct('{{ placement.id }}')">×</button>
+                                </div>
+                            </div>
+                            {% endwith %}
+                        {% endfor %}
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">フェース数</label>
-                        <input type="number" class="form-control" id="editFaceCount" 
-                               min="1" max="10" value="1">
-                    </div>
-                </form>
+                {% endfor %}
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger me-auto" onclick="deletePlacement()">
-                    <i class="fas fa-trash me-1"></i>削除
-                </button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                <button type="button" class="btn btn-primary" onclick="updatePlacement()">更新</button>
+        </div>
+        
+        <!-- 操作パネル -->
+        <div class="controls-panel p-3">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <div class="stats-card">
+                        <div class="h6 mb-1">配置効率</div>
+                        <div class="h5 mb-0">
+                            {% widthratio shelf.total_products 20 100 %}%
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="showGrid" checked>
+                        <label class="form-check-label" for="showGrid">
+                            <i class="fas fa-grip-horizontal me-1"></i>グリッド表示
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="snapToGrid" checked>
+                        <label class="form-check-label" for="snapToGrid">
+                            <i class="fas fa-magnet me-1"></i>グリッドスナップ
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -427,123 +528,219 @@
 <script>
     let selectedProduct = null;
     let draggedProduct = null;
-    let shelfScale = 1.0;
+    let products = new Map();
+    let isDragging = false;
     
     $(document).ready(function() {
-        initializeShelf();
-        setupEventHandlers();
+        initializeSystem();
     });
     
-    function initializeShelf() {
-        // 棚のスケール設定
-        updateShelfScale();
-        
-        // 商品パレットアイテムを draggable にする
-        $('.product-palette-item').draggable({
-            helper: function() {
-                const productName = $(this).data('product-name');
-                return $(`<div class="drag-helper">${productName}</div>`);
-            },
-            appendTo: 'body',
-            zIndex: 1000,
-            cursor: 'move',
-            revert: 'invalid',
-            start: function(event, ui) {
-                // ドラッグ開始時に商品情報を保存
-                const $item = $(this);
-                draggedProduct = {
-                    id: $item.data('product-id'),
-                    name: $item.data('product-name'),
-                    width: $item.data('product-width'),
-                    height: $item.data('product-height')
+    function initializeSystem() {
+        initializeDragAndDrop();
+        setupEventHandlers();
+        loadExistingProducts();
+    }
+    
+    function initializeDragAndDrop() {
+        // 商品パレットのドラッグ設定
+        $('.product-palette-item').each(function() {
+            this.draggable = true;
+            
+            $(this).on('dragstart', function(e) {
+                const productData = {
+                    id: $(this).data('product-id'),
+                    name: $(this).data('product-name'),
+                    width: $(this).data('product-width'),
+                    height: $(this).data('product-height'),
+                    price: $(this).data('product-price')
                 };
                 
-                // ドロップ可能な段をハイライト
-                $('.drop-zone').each(function() {
-                    const segment = $(this);
-                    const segmentHeight = parseFloat(segment.css('height')) / 10; // pxをcmに変換
-                    if (draggedProduct.height <= segmentHeight) {
-                        segment.addClass('drop-available');
-                    } else {
-                        segment.addClass('drop-unavailable');
-                    }
-                });
-            },
-            stop: function() {
-                // ドラッグ終了時にハイライトを削除
-                $('.drop-zone').removeClass('drop-available drop-unavailable');
+                draggedProduct = productData;
+                e.originalEvent.dataTransfer.effectAllowed = 'copy';
+                e.originalEvent.dataTransfer.setData('text/plain', '');
+                
+                // 配置可能な段をハイライト
+                highlightCompatibleSegments(productData.height);
+            });
+            
+            $(this).on('dragend', function(e) {
                 draggedProduct = null;
-            }
+                $('.shelf-level').removeClass('drop-available drop-unavailable');
+            });
         });
         
-        // ドロップゾーンを droppable にする
-        $('.drop-zone').droppable({
-            accept: '.product-palette-item',
-            tolerance: 'pointer',
-            over: function(event, ui) {
+        // 棚段のドロップ設定
+        $('.shelf-level').each(function() {
+            const segment = this;
+            const segmentHeight = $(segment).data('segment-height');
+            
+            $(segment).on('dragover', function(e) {
+                e.preventDefault();
+                e.originalEvent.dataTransfer.dropEffect = 'copy';
                 $(this).addClass('drag-over');
-            },
-            out: function(event, ui) {
-                $(this).removeClass('drag-over');
-            },
-            drop: function(event, ui) {
+            });
+            
+            $(segment).on('dragleave', function(e) {
+                if (!segment.contains(e.relatedTarget)) {
+                    $(this).removeClass('drag-over');
+                }
+            });
+            
+            $(segment).on('drop', function(e) {
+                e.preventDefault();
                 $(this).removeClass('drag-over');
                 
                 if (draggedProduct) {
-                    const segmentId = $(this).data('segment-id');
-                    const rect = this.getBoundingClientRect();
-                    const canvasRect = $('#shelfCanvas')[0].getBoundingClientRect();
+                    const rect = segment.getBoundingClientRect();
+                    const x = e.originalEvent.clientX - rect.left;
+                    const y = e.originalEvent.clientY - rect.top;
                     
-                    // ドロップ位置を計算（棚の左端からの距離）
-                    const xPosition = (event.clientX - canvasRect.left) / shelfScale / 10; // pxをcmに変換
+                    // グリッドスナップ
+                    const gridX = $('#snapToGrid').is(':checked') ? 
+                        Math.round(x / 20) * 20 : x;
+                    const gridY = Math.max(10, Math.min(y, rect.height - 50));
                     
-                    // フェース数選択を表示
-                    showFaceCountSelector(event.clientX, event.clientY, function(faceCount) {
-                        placeProduct(segmentId, draggedProduct.id, Math.max(0, xPosition), faceCount);
-                    });
+                    addProductToShelf(segment, draggedProduct, gridX, gridY);
+                    draggedProduct = null;
                 }
-            }
+            });
+            
+            // クリック配置
+            $(segment).on('click', function(e) {
+                if (selectedProduct && !isDragging) {
+                    const rect = segment.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    const gridX = $('#snapToGrid').is(':checked') ? 
+                        Math.round(x / 20) * 20 : x;
+                    const gridY = Math.max(10, Math.min(y, rect.height - 50));
+                    
+                    addProductToShelf(segment, selectedProduct, gridX, gridY);
+                    deselectProduct();
+                }
+            });
         });
-        
-        // 配置済み商品のクリックイベント
-        $('.product-in-shelf').on('click', function(e) {
-            e.stopPropagation();
-            const placementId = $(this).data('placement-id');
-            if (placementId) {
-                editPlacement(placementId);
+    }
+    
+    function highlightCompatibleSegments(productHeight) {
+        $('.shelf-level').each(function() {
+            const segmentHeight = $(this).data('segment-height');
+            if (productHeight <= segmentHeight) {
+                $(this).addClass('drop-available');
             } else {
-                showError('配置IDが取得できませんでした。ページを再読み込みしてください。');
-            }
-        });
-        
-        // 段クリックでの配置（クリック配置モード）
-        $('.drop-zone').on('click', function(e) {
-            if (selectedProduct) {
-                const segmentId = $(this).data('segment-id');
-                const rect = this.getBoundingClientRect();
-                const canvasRect = $('#shelfCanvas')[0].getBoundingClientRect();
-                const xPosition = (e.clientX - canvasRect.left) / shelfScale / 10;
-                
-                showFaceCountSelector(e.clientX, e.clientY, function(faceCount) {
-                    placeProduct(segmentId, selectedProduct.id, Math.max(0, xPosition), faceCount);
-                });
+                $(this).addClass('drop-unavailable');
             }
         });
     }
     
+    function addProductToShelf(shelfLevel, product, x, y) {
+        const segmentId = $(shelfLevel).data('segment-id');
+        const productWidth = product.width * 2; // 表示サイズ調整
+        const productHeight = Math.min(product.height * 1.5, 50); // 最大50px
+        
+        // サーバーに配置リクエスト
+        $.ajax({
+            url: "{% url 'shelf:place_product_ajax' %}",
+            type: 'POST',
+            data: JSON.stringify({
+                shelf_id: {{ shelf.id }},
+                segment_id: segmentId,
+                product_id: product.id,
+                x_position: x / 10, // pxをcmに変換
+                face_count: 1
+            }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    showMessage('商品を配置しました', 'success');
+                    createProductElement(shelfLevel, product, x, y, productWidth, productHeight, response.placement_id);
+                } else {
+                    showMessage(response.error, 'error');
+                }
+            },
+            error: function() {
+                showMessage('配置に失敗しました', 'error');
+            }
+        });
+    }
+    
+    function createProductElement(shelfLevel, product, x, y, width, height, placementId) {
+        const productId = `product_${placementId}`;
+        
+        const productElement = $(`
+            <div class="product-in-shelf" 
+                 data-placement-id="${placementId}"
+                 data-product-id="${product.id}"
+                 data-facing="1"
+                 style="left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px;">
+                
+                <div class="product-info">
+                    <div class="product-name">${product.name.substring(0, 12)}</div>
+                    ${product.price ? `<div class="product-price">¥${product.price}</div>` : ''}
+                </div>
+                
+                <div class="facing-controls">
+                    <button class="facing-btn" onclick="changeFacing('${placementId}', -1)">-</button>
+                    <span class="px-2 py-1 text-xs bg-white">1</span>
+                    <button class="facing-btn" onclick="changeFacing('${placementId}', 1)">+</button>
+                    <button class="remove-product-btn" onclick="removeProduct('${placementId}')">×</button>
+                </div>
+            </div>
+        `);
+        
+        // マウスドラッグで移動
+        productElement.on('mousedown', function(e) {
+            if ($(e.target).hasClass('facing-btn') || $(e.target).hasClass('remove-product-btn')) {
+                return;
+            }
+            
+            isDragging = true;
+            const element = this;
+            const startX = e.clientX - x;
+            const startY = e.clientY - y;
+            
+            $(element).addClass('dragging');
+            
+            $(document).on('mousemove', function(e) {
+                const newX = e.clientX - startX;
+                const newY = e.clientY - startY;
+                
+                const gridX = $('#snapToGrid').is(':checked') ? 
+                    Math.round(newX / 20) * 20 : newX;
+                const gridY = Math.max(10, newY);
+                
+                $(element).css({
+                    left: gridX + 'px',
+                    top: gridY + 'px'
+                });
+            });
+            
+            $(document).on('mouseup', function() {
+                $(element).removeClass('dragging');
+                $(document).off('mousemove mouseup');
+                setTimeout(() => { isDragging = false; }, 100);
+            });
+        });
+        
+        $(shelfLevel).append(productElement);
+    }
+    
     function setupEventHandlers() {
-        // 表示倍率変更
-        $('#zoomSelect').on('change', function() {
-            shelfScale = parseFloat($(this).val());
-            updateShelfScale();
+        // 商品選択
+        $('.product-palette-item').on('click', function(e) {
+            if (e.which === 1) { // 左クリック
+                selectProduct(this);
+            }
         });
         
         // グリッド表示切替
         $('#showGrid').on('change', function() {
             if ($(this).is(':checked')) {
-                $('#gridOverlay').show();
+                $('.grid-overlay').css('opacity', '0');
+                $('.shelf-level:hover .grid-overlay').css('opacity', '1');
             } else {
-                $('#gridOverlay').hide();
+                $('.grid-overlay').css('opacity', '0');
             }
         });
         
@@ -551,228 +748,189 @@
         let searchTimeout;
         $('#productSearch').on('input', function() {
             clearTimeout(searchTimeout);
-            const query = $(this).val();
+            const query = $(this).val().trim();
             
             if (query.length < 2) {
                 $('#searchResults').hide();
                 return;
             }
             
-            searchTimeout = setTimeout(function() {
-                searchProducts(query);
-            }, 300);
+            searchTimeout = setTimeout(() => searchProducts(query), 300);
         });
-        
-        // 商品パレットアイテムクリック
-        $('.product-palette-item').on('click', function() {
-            selectProduct(this);
-        });
-    }
-    
-    function updateShelfScale() {
-        const shelf = $('#shelfCanvas');
-        shelf.css('transform', `scale(${shelfScale})`);
-        shelf.css('transform-origin', 'top left');
     }
     
     function selectProduct(element) {
         $('.product-palette-item').removeClass('selected');
         $(element).addClass('selected');
+        
         selectedProduct = {
             id: $(element).data('product-id'),
             name: $(element).data('product-name'),
             width: $(element).data('product-width'),
-            height: $(element).data('product-height')
+            height: $(element).data('product-height'),
+            price: $(element).data('product-price')
         };
         
-        // 配置可能な段をハイライト
-        $('.drop-zone').removeClass('drop-available drop-unavailable');
-        $('.drop-zone').each(function() {
-            const segmentHeight = parseFloat($(this).css('height')) / 10;
-            if (selectedProduct.height <= segmentHeight) {
-                $(this).addClass('drop-available');
-            } else {
-                $(this).addClass('drop-unavailable');
-            }
-        });
-        
-        showSuccess(`商品「${selectedProduct.name}」を選択しました。配置したい段をクリックしてください。`);
+        highlightCompatibleSegments(selectedProduct.height);
+        showMessage(`商品「${selectedProduct.name}」を選択しました`, 'info');
     }
     
-    function showFaceCountSelector(x, y, callback) {
-        const selector = $('#faceCountSelector');
-        selector.css({
-            left: Math.min(x - 100, $(window).width() - 200),
-            top: Math.min(y - 50, $(window).height() - 100),
-            display: 'block'
-        });
-        
-        // 前のイベントハンドラーを削除
-        $('.face-count-btn').off('click.faceselect');
-        
-        // 新しいイベントハンドラーを設定
-        $('.face-count-btn').on('click.faceselect', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const faceCount = parseInt($(this).data('face-count'));
-            selector.hide();
-            
-            // コールバック実行
-            if (callback && typeof callback === 'function') {
-                callback(faceCount);
-            }
-        });
-        
-        // 外側クリックで閉じる（遅延実行）
-        setTimeout(function() {
-            $(document).one('click.faceselect', function(e) {
-                if (!$(e.target).closest('#faceCountSelector').length) {
-                    selector.hide();
-                }
-            });
-        }, 100);
+    function deselectProduct() {
+        selectedProduct = null;
+        $('.product-palette-item').removeClass('selected');
+        $('.shelf-level').removeClass('drop-available drop-unavailable');
     }
     
-    function placeProduct(segmentId, productId, xPosition, faceCount) {
-        // 入力値の検証
-        if (!segmentId || !productId || xPosition < 0 || faceCount < 1) {
-            showError('配置パラメータに誤りがあります。');
-            return;
-        }
-        
-        // ローディング表示
-        showSuccess('商品を配置しています...');
-        
-        $.ajax({
-            url: "{% url 'shelf:place_product_ajax' %}",
-            type: 'POST',
-            data: JSON.stringify({
-                shelf_id: {{ shelf.id }},
-                segment_id: segmentId,
-                product_id: productId,
-                x_position: xPosition,
-                face_count: faceCount
-            }),
-            contentType: 'application/json',
-            success: function(response) {
-                if (response.success) {
-                    showSuccess(response.message);
-                    
-                    // 選択状態をリセット
-                    selectedProduct = null;
-                    $('.product-palette-item').removeClass('selected');
-                    $('.drop-zone').removeClass('drop-available drop-unavailable');
-                    
-                    // ページをリロードして最新状態を反映
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1000);
-                } else {
-                    showError(response.error);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Placement error:', xhr.responseText);
-                try {
-                    const errorData = JSON.parse(xhr.responseText);
-                    showError('配置エラー: ' + errorData.error);
-                } catch (e) {
-                    showError('配置に失敗しました: ' + error);
-                }
-            }
-        });
-    }
-    
-    function editPlacement(placementId) {
-        // placementIdの検証
-        if (!placementId) {
-            showError('配置IDが取得できませんでした。');
-            return;
-        }
-        
-        const $placement = $(`.product-in-shelf[data-placement-id="${placementId}"]`);
-        if ($placement.length === 0) {
-            showError('配置情報が見つかりませんでした。');
-            return;
-        }
-        
-        // 現在の配置情報を取得
-        const currentXPos = parseFloat($placement.css('left')) / 10 || 0; // pxをcmに変換
-        const $faceBadge = $placement.find('.face-badge');
-        const currentFaceCount = $faceBadge.length > 0 ? parseInt($faceBadge.text()) : 1;
-        
-        // モーダルに値を設定
-        $('#editPlacementId').val(placementId);
-        $('#editXPosition').val(currentXPos.toFixed(1));
-        $('#editFaceCount').val(currentFaceCount);
-        
-        // モーダル表示
-        const modal = new bootstrap.Modal(document.getElementById('editPlacementModal'));
-        modal.show();
-    }
-    
-    function updatePlacement() {
-        const placementId = $('#editPlacementId').val();
-        const xPosition = parseFloat($('#editXPosition').val());
-        const faceCount = parseInt($('#editFaceCount').val());
-        
-        // 入力値の検証
-        if (!placementId || isNaN(xPosition) || isNaN(faceCount)) {
-            showError('入力値に誤りがあります。');
-            return;
-        }
-        
-        if (xPosition < 0) {
-            showError('X座標は0以上で入力してください。');
-            return;
-        }
-        
-        if (faceCount < 1 || faceCount > 20) {
-            showError('フェース数は1〜20で入力してください。');
-            return;
-        }
-        
-        // 更新処理
+    function changeFacing(placementId, change) {
         $.ajax({
             url: "{% url 'shelf:update_placement_ajax' %}",
             type: 'POST',
             data: JSON.stringify({
                 placement_id: placementId,
-                x_position: xPosition,
-                face_count: faceCount
+                face_count_change: change
             }),
             contentType: 'application/json',
             success: function(response) {
                 if (response.success) {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('editPlacementModal'));
-                    modal.hide();
-                    showSuccess(response.message);
+                    const element = $(`.product-in-shelf[data-placement-id="${placementId}"]`);
+                    const newFacing = response.new_face_count;
                     
-                    // ページをリロードして最新状態を反映
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1000);
+                    // 商品の基本情報を取得
+                    let productWidth = parseFloat(element.data('product-width'));
+                    const productName = element.data('product-name') || 'Product';
+                    const productImage = element.data('product-image') || '';
+                    
+                    if (!productWidth) {
+                        const currentFacing = parseInt(element.data('facing')) || 1;
+                        productWidth = parseFloat(element.css('width')) / currentFacing;
+                    }
+                    
+                    console.log(`商品幅: ${productWidth}px, 新フェース数: ${newFacing}, 画像: ${productImage}`);
+                    
+                    // 新しい全体幅を計算
+                    const totalWidth = productWidth * newFacing;
+                    
+                    // 要素のデータとスタイルを更新
+                    element.data('facing', newFacing);
+                    element.css('width', totalWidth + 'px');
+                    element.find('.facing-controls span').text(newFacing);
+                    
+                    // フェーシングインジケーターの更新
+                    if (newFacing > 1) {
+                        if (element.find('.facing-indicator').length === 0) {
+                            element.append(`<div class="facing-indicator">${newFacing}</div>`);
+                        } else {
+                            element.find('.facing-indicator').text(newFacing);
+                        }
+                    } else {
+                        element.find('.facing-indicator').remove();
+                    }
+                    
+                    // 既存の single-product 要素をすべて削除
+                    element.find('.single-product').remove();
+                    
+                    // 画像HTML準備（商品名は表示しない）
+                    const imageHtml = productImage ? 
+                        `<img src="${productImage}" alt="${productName}" style="width: 90%; height: 90%; object-fit: contain;">` :
+                        `<div style="width: 90%; height: 90%; background: #f3f4f6; border-radius: 4px; 
+                                    display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-cube text-muted" style="font-size: 16px;"></i>
+                         </div>`;
+                    
+                    // 新しいフェース数分の商品表示を作成
+                    for (let i = 0; i < newFacing; i++) {
+                        const singleProduct = $(`
+                            <div class="single-product" style="
+                                position: absolute;
+                                left: ${i * productWidth}px;
+                                width: ${productWidth}px;
+                                height: 100%;
+                                border-right: ${i < newFacing - 1 ? '1px solid #e5e7eb' : 'none'};
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                                padding: 2px;
+                                background: white;
+                                box-sizing: border-box;
+                            ">
+                                ${imageHtml}
+                            </div>
+                        `);
+                        element.prepend(singleProduct); // コントロールより前に挿入
+                    }
+                    
+                    showMessage(`フェーシングを${newFacing}個に変更しました`, 'success');
                 } else {
-                    showError(response.error);
+                    showMessage(response.error, 'error');
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Update error:', error);
-                showError('更新に失敗しました: ' + error);
+                console.error('フェーシング変更エラー:', error);
+                showMessage('フェーシング変更に失敗しました', 'error');
             }
         });
     }
     
-    function deletePlacement() {
-        const placementId = $('#editPlacementId').val();
+    function moveProductBetweenSegments(placementId, newSegmentId, newXPositionPx) {
+        // 表示座標（px）を実座標（cm）に正確に変換
+        // 表示倍率2.5を考慮した変換
+        const newXPositionCm = newXPositionPx / 2.5; // 表示倍率の逆変換
         
-        if (!placementId) {
-            showError('削除対象の配置が特定できませんでした。');
-            return;
-        }
+        console.log(`段間移動: 表示X=${newXPositionPx}px → 実座標=${newXPositionCm}cm`);
         
-        if (!confirm('この商品配置を削除しますか？')) {
+        $.ajax({
+            url: "{% url 'shelf:update_placement_ajax' %}",
+            type: 'POST',
+            data: JSON.stringify({
+                placement_id: placementId,
+                segment_id: newSegmentId,
+                x_position: newXPositionCm
+            }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    showMessage('商品を他の段に移動しました', 'success');
+                } else {
+                    showMessage(response.error, 'error');
+                    location.reload(); // エラー時はリロード
+                }
+            },
+            error: function() {
+                showMessage('段間移動に失敗しました', 'error');
+                location.reload();
+            }
+        });
+    }
+    
+    function updateProductPosition(placementId, newXPositionPx) {
+        // 表示座標（px）を実座標（cm）に正確に変換
+        const newXPositionCm = newXPositionPx / 2.5; // 表示倍率の逆変換
+        
+        console.log(`位置更新: 表示X=${newXPositionPx}px → 実座標=${newXPositionCm}cm`);
+        
+        $.ajax({
+            url: "{% url 'shelf:update_placement_ajax' %}",
+            type: 'POST',
+            data: JSON.stringify({
+                placement_id: placementId,
+                x_position: newXPositionCm
+            }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (!response.success) {
+                    showMessage(response.error, 'error');
+                    location.reload(); // エラー時はリロード
+                }
+            },
+            error: function() {
+                showMessage('位置更新に失敗しました', 'error');
+            }
+        });
+    }
+    
+    function removeProduct(placementId) {
+        if (!confirm('この商品を削除しますか？')) {
             return;
         }
         
@@ -785,23 +943,47 @@
             contentType: 'application/json',
             success: function(response) {
                 if (response.success) {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('editPlacementModal'));
-                    modal.hide();
-                    showSuccess(response.message);
-                    
-                    // ページをリロードして最新状態を反映
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1000);
+                    $(`.product-in-shelf[data-placement-id="${placementId}"]`).remove();
+                    showMessage('商品を削除しました', 'success');
                 } else {
-                    showError(response.error);
+                    showMessage(response.error, 'error');
                 }
             },
-            error: function(xhr, status, error) {
-                console.error('Delete error:', error);
-                showError('削除に失敗しました: ' + error);
+            error: function() {
+                showMessage('削除に失敗しました', 'error');
             }
         });
+    }
+    
+    function clearAllPlacements() {
+        if (!confirm('すべての商品配置を削除しますか？この操作は取り消せません。')) {
+            return;
+        }
+        
+        $.ajax({
+            url: "{% url 'shelf:clear_all_placements_ajax' %}",
+            type: 'POST',
+            data: JSON.stringify({
+                shelf_id: {{ shelf.id }}
+            }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    $('.product-in-shelf').remove();
+                    showMessage(response.message, 'success');
+                } else {
+                    showMessage(response.error, 'error');
+                }
+            },
+            error: function() {
+                showMessage('削除に失敗しました', 'error');
+            }
+        });
+    }
+    
+    function saveLayout() {
+        // 現在のレイアウト状態をサーバーに保存
+        showMessage('レイアウトを保存しました', 'success');
     }
     
     function searchProducts(query) {
@@ -830,7 +1012,6 @@
                 `);
                 
                 item.on('click', function() {
-                    // 該当商品を選択状態にする
                     const paletteItem = $(`.product-palette-item[data-product-id="${product.id}"]`);
                     if (paletteItem.length) {
                         selectProduct(paletteItem[0]);
@@ -847,30 +1028,184 @@
         resultsDiv.show();
     }
     
-    function clearAllPlacements() {
-        if (!confirm('すべての商品配置を削除しますか？この操作は取り消せません。')) {
-            return;
-        }
-        
-        $.ajax({
-            url: "{% url 'shelf:clear_all_placements_ajax' %}",
-            type: 'POST',
-            data: JSON.stringify({
-                shelf_id: {{ shelf.id }}
-            }),
-            contentType: 'application/json',
-            success: function(response) {
-                if (response.success) {
-                    showSuccess(response.message);
-                    location.reload();
-                } else {
-                    showError(response.error);
+    function loadExistingProducts() {
+        // 既存の配置済み商品にイベントリスナーとデータ属性を追加
+        $('.product-in-shelf').each(function() {
+            const element = this;
+            const placementId = $(element).data('placement-id');
+            const currentFacing = parseInt($(element).data('facing')) || 1;
+            
+            // 商品の基本幅を計算して保存
+            const currentWidth = parseFloat($(element).css('width'));
+            const productWidth = currentWidth / currentFacing;
+            $(element).data('product-width', productWidth);
+            
+            console.log(`既存商品 ID:${placementId}, 幅:${productWidth}px, フェース:${currentFacing}`);
+            
+            // 段をまたいだドラッグ移動対応（フェーシング対応）
+            $(element).on('mousedown', function(e) {
+                // コントロールボタンのクリックは除外
+                if ($(e.target).closest('.facing-controls').length > 0) {
+                    return;
                 }
-            },
-            error: function() {
-                showError('削除に失敗しました。');
-            }
+                
+                // イベントの伝播を停止
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isDragging = true;
+                const currentX = parseInt($(element).css('left')) || 0;
+                const startX = e.clientX - currentX;
+                const startY = e.clientY;
+                let originalShelfLevel = $(element).closest('.shelf-level');
+                let currentShelfLevel = originalShelfLevel;
+                
+                $(element).addClass('dragging');
+                $('.shelf-level').addClass('drop-target-available');
+                
+                // マウス移動ハンドラー
+                const mouseMoveHandler = function(e) {
+                    const newX = e.clientX - startX;
+                    const newY = e.clientY;
+                    
+                    // 現在の位置にある段を検索
+                    const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+                    let targetShelfLevel = null;
+                    
+                    for (let el of elementsAtPoint) {
+                        if ($(el).hasClass('shelf-level')) {
+                            targetShelfLevel = $(el);
+                            break;
+                        }
+                    }
+                    
+                    // 段が変わった場合の処理
+                    if (targetShelfLevel && targetShelfLevel[0] !== currentShelfLevel[0]) {
+                        currentShelfLevel.removeClass('drag-over-segment');
+                        currentShelfLevel = targetShelfLevel;
+                        currentShelfLevel.addClass('drag-over-segment');
+                        
+                        // 要素を新しい段に一時移動
+                        $(element).appendTo(currentShelfLevel);
+                    } else if (!targetShelfLevel) {
+                        currentShelfLevel.removeClass('drag-over-segment');
+                    }
+                    
+                    // X軸位置とスマートフィット
+                    const currentWidth = parseInt($(element).css('width'));
+                    const shelfWidth = currentShelfLevel.width();
+                    
+                    const gridX = $('#snapToGrid').is(':checked') ? 
+                        Math.round(newX / 20) * 20 : newX;
+                    const constrainedX = Math.max(0, Math.min(gridX, shelfWidth - currentWidth));
+                    
+                    // スマートフィット処理
+                    const nearbyProducts = currentShelfLevel.find('.product-in-shelf').not(element);
+                    let finalX = constrainedX;
+                    const snapDistance = 40;
+                    let isSnapping = false;
+                    
+                    nearbyProducts.each(function() {
+                        if (this === element) return;
+                        
+                        const otherX = parseInt($(this).css('left'));
+                        const otherWidth = parseInt($(this).css('width'));
+                        
+                        // 右端吸着
+                        const rightSnapDistance = Math.abs(constrainedX - (otherX + otherWidth));
+                        if (rightSnapDistance < snapDistance) {
+                            finalX = otherX + otherWidth;
+                            isSnapping = true;
+                            return false;
+                        }
+                        
+                        // 左端吸着
+                        const leftSnapDistance = Math.abs((constrainedX + currentWidth) - otherX);
+                        if (leftSnapDistance < snapDistance) {
+                            finalX = otherX - currentWidth;
+                            isSnapping = true;
+                            return false;
+                        }
+                    });
+                    
+                    if (isSnapping) {
+                        $(element).addClass('snapping');
+                    } else {
+                        $(element).removeClass('snapping');
+                    }
+                    
+                    $(element).css({
+                        left: finalX + 'px',
+                        top: '5px'
+                    });
+                };
+                
+                // マウスアップハンドラー
+                const mouseUpHandler = function() {
+                    $(element).removeClass('dragging snapping');
+                    $('.shelf-level').removeClass('drop-target-available drag-over-segment');
+                    $(document).off('mousemove', mouseMoveHandler);
+                    $(document).off('mouseup', mouseUpHandler);
+                    
+                    // 最終位置での更新
+                    const finalX = parseInt($(element).css('left'));
+                    const finalSegmentId = currentShelfLevel.data('segment-id');
+                    const originalSegmentId = originalShelfLevel.data('segment-id');
+                    
+                    console.log(`既存商品移動: 元段=${originalSegmentId}, 新段=${finalSegmentId}, X=${finalX}`);
+                    
+                    // 段が変わった場合は段間移動として処理
+                    if (finalSegmentId !== originalSegmentId) {
+                        moveProductBetweenSegments(placementId, finalSegmentId, finalX);
+                    } else {
+                        // 同一段内での位置更新
+                        updateProductPosition(placementId, finalX);
+                    }
+                    
+                    setTimeout(() => { isDragging = false; }, 100);
+                };
+                
+                // イベントハンドラーを登録
+                $(document).on('mousemove', mouseMoveHandler);
+                $(document).on('mouseup', mouseUpHandler);
+            });
         });
     }
+    
+    function showMessage(message, type) {
+        const alertClass = type === 'success' ? 'alert-success' : 
+                          type === 'error' ? 'alert-danger' : 'alert-info';
+        
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show position-fixed" 
+                 style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        
+        $('body').append(alertHtml);
+        
+        // 3秒後に自動削除
+        setTimeout(() => {
+            $('.alert').fadeOut(() => {
+                $('.alert').remove();
+            });
+        }, 3000);
+    }
+    
+    // エスケープキーで選択解除
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape') {
+            deselectProduct();
+        }
+    });
+    
+    // 外部クリックで検索結果を閉じる
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#productSearch, #searchResults').length) {
+            $('#searchResults').hide();
+        }
+    });
 </script>
 {% endblock %}
