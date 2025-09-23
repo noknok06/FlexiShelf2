@@ -2,6 +2,7 @@
 
 from django import forms
 from django.core.validators import MinValueValidator
+from django.conf import settings
 from .models import Shelf, ShelfSegment, ProductPlacement, Product
 
 
@@ -64,21 +65,35 @@ class ShelfSegmentForm(forms.ModelForm):
     class Meta:
         model = ShelfSegment
         fields = ['height']
-        widgets = {
-            'height': forms.NumberInput(attrs={
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # 設定から段高さの制限を取得
+        min_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MIN_SEGMENT_HEIGHT', 15.0)
+        max_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_SEGMENT_HEIGHT', 60.0)
+        
+        self.fields['height'] = forms.FloatField(
+            widget=forms.NumberInput(attrs={
                 'class': 'form-control',
                 'step': '0.1',
-                'min': '10.0',
-                'max': '80.0'
+                'min': str(min_height),
+                'max': str(max_height)
             }),
-        }
+            min_value=min_height,
+            max_value=max_height,
+            label='段高さ (cm)'
+        )
     
     def clean_height(self):
         height = self.cleaned_data['height']
-        if height < 15.0:
-            raise forms.ValidationError('段高さは15cm以上である必要があります。')
-        if height > 60.0:
-            raise forms.ValidationError('段高さは60cm以下である必要があります。')
+        min_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MIN_SEGMENT_HEIGHT', 15.0)
+        max_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_SEGMENT_HEIGHT', 60.0)
+        
+        if height < min_height:
+            raise forms.ValidationError(f'段高さは{min_height}cm以上である必要があります。')
+        if height > max_height:
+            raise forms.ValidationError(f'段高さは{max_height}cm以下である必要があります。')
         return height
 
 
@@ -88,30 +103,42 @@ class ProductPlacementForm(forms.ModelForm):
     class Meta:
         model = ProductPlacement
         fields = ['product', 'x_position', 'face_count']
-        widgets = {
-            'product': forms.Select(attrs={
-                'class': 'form-control',
-            }),
-            'x_position': forms.NumberInput(attrs={
+        
+    def __init__(self, *args, **kwargs):
+        segment = kwargs.pop('segment', None)
+        super().__init__(*args, **kwargs)
+        
+        # 設定からフェース数の制限を取得
+        max_face_count = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_FACE_COUNT', 20)
+        
+        self.fields['product'] = forms.ModelChoiceField(
+            queryset=Product.objects.filter(is_active=True).order_by('name'),
+            widget=forms.Select(attrs={'class': 'form-control'}),
+            label='商品'
+        )
+        
+        self.fields['x_position'] = forms.FloatField(
+            widget=forms.NumberInput(attrs={
                 'class': 'form-control',
                 'step': '0.1',
                 'min': '0.0',
                 'placeholder': '0.0'
             }),
-            'face_count': forms.NumberInput(attrs={
+            min_value=0.0,
+            label='X座標 (cm)'
+        )
+        
+        self.fields['face_count'] = forms.IntegerField(
+            widget=forms.NumberInput(attrs={
                 'class': 'form-control',
                 'min': '1',
-                'max': '10',
+                'max': str(max_face_count),
                 'value': '1'
             }),
-        }
-    
-    def __init__(self, *args, **kwargs):
-        segment = kwargs.pop('segment', None)
-        super().__init__(*args, **kwargs)
-        
-        # アクティブな商品のみ表示
-        self.fields['product'].queryset = Product.objects.filter(is_active=True).order_by('name')
+            min_value=1,
+            max_value=max_face_count,
+            label='フェース数'
+        )
         
         # 段が指定されている場合、配置可能な商品のみ表示
         if segment:
@@ -126,10 +153,12 @@ class ProductPlacementForm(forms.ModelForm):
     
     def clean_face_count(self):
         face_count = self.cleaned_data['face_count']
+        max_face_count = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_FACE_COUNT', 20)
+        
         if face_count < 1:
             raise forms.ValidationError('フェース数は1以上である必要があります。')
-        if face_count > 20:
-            raise forms.ValidationError('フェース数は20以下である必要があります。')
+        if face_count > max_face_count:
+            raise forms.ValidationError(f'フェース数は{max_face_count}以下である必要があります。')
         return face_count
     
     def clean(self):
@@ -240,3 +269,60 @@ class ProductCreateForm(forms.ModelForm):
         if height > 100:
             raise forms.ValidationError('高さは100cm以下である必要があります。')
         return height
+
+
+class ShelfDisplaySettingsForm(forms.Form):
+    """棚表示設定フォーム（管理者用）"""
+    display_scale = forms.IntegerField(
+        label='表示倍率 (1cm = N px)',
+        min_value=1,
+        max_value=10,
+        initial=2,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'help_text': '1cm あたりのピクセル数を設定'
+        })
+    )
+    
+    grid_snap_size = forms.IntegerField(
+        label='グリッドスナップサイズ (px)',
+        min_value=5,
+        max_value=50,
+        initial=20,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'help_text': 'グリッドスナップ時の最小単位'
+        })
+    )
+    
+    min_segment_height = forms.FloatField(
+        label='最小段高さ (cm)',
+        min_value=10.0,
+        max_value=30.0,
+        initial=15.0,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'step': '0.1'
+        })
+    )
+    
+    max_segment_height = forms.FloatField(
+        label='最大段高さ (cm)',
+        min_value=40.0,
+        max_value=100.0,
+        initial=60.0,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'step': '0.1'
+        })
+    )
+    
+    max_face_count = forms.IntegerField(
+        label='最大フェース数',
+        min_value=5,
+        max_value=50,
+        initial=20,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control'
+        })
+    )

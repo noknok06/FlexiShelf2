@@ -20,5 +20,4 @@ urlpatterns = [
     path('ajax/clear-all-placements/', views.clear_all_placements_ajax, name='clear_all_placements_ajax'),
     
     # デバッグ用URL（本番では削除またはスタッフ限定にする）
-    path('debug/<int:shelf_id>/', views.debug_placement_info, name='debug_placement_info'),
 ]

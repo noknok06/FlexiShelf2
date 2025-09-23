@@ -1,4 +1,4 @@
-# shelf/views.py 完全修正版
+# shelf/views.py の完全修正版
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
@@ -8,14 +8,10 @@ from django.views.decorators.http import require_http_methods
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
-from decimal import Decimal, ROUND_HALF_UP
+from django.conf import settings
 import json
-import logging
-
-from .models import Shelf, ShelfSegment, Product, ProductPlacement, round_decimal
+from .models import Shelf, ShelfSegment, Product, ProductPlacement
 from .forms import ShelfCreateForm, ProductPlacementForm, ShelfSegmentForm
-
-logger = logging.getLogger(__name__)
 
 
 def shelf_list(request):
@@ -34,11 +30,14 @@ def shelf_detail(request, shelf_id):
     segments = shelf.segments.filter(is_active=True).order_by('level').prefetch_related('placements__product')
     products = Product.objects.filter(is_active=True).order_by('name')
     
+    # 棚割り設定をテンプレートに渡す
     context = {
         'shelf': shelf,
         'segments': segments,
         'products': products,
-        'title': f'棚割り編集 - {shelf.name}'
+        'title': f'棚割り編集 - {shelf.name}',
+        'shelf_display_scale': getattr(settings, 'SHELF_DISPLAY_SCALE', 2),
+        'shelf_settings': getattr(settings, 'SHELF_SETTINGS', {}),
     }
     return render(request, 'shelf/shelf_detail.html', context)
 
@@ -53,11 +52,13 @@ def shelf_create(request):
                     # 棚を作成
                     shelf = form.save()
                     
-                    # 段を作成（デフォルトで4段）
-                    segment_heights = [30, 35, 35, 40]  # デフォルトの段高さ
+                    # 段を作成（設定からデフォルト値を取得）
+                    default_heights = getattr(settings, 'SHELF_SETTINGS', {}).get(
+                        'DEFAULT_SEGMENT_HEIGHTS', [30, 35, 35, 40]
+                    )
                     y_pos = 0
                     
-                    for level, height in enumerate(segment_heights, 1):
+                    for level, height in enumerate(default_heights, 1):
                         ShelfSegment.objects.create(
                             shelf=shelf,
                             level=level,
@@ -83,55 +84,53 @@ def shelf_create(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def place_product_ajax(request):
-    """商品配置のAjax処理（完全修正版）"""
+    """商品配置のAjax処理"""
     try:
         data = json.loads(request.body)
         shelf_id = data.get('shelf_id')
         segment_id = data.get('segment_id')
         product_id = data.get('product_id')
-        x_position = round_decimal(float(data.get('x_position', 0)))
+        x_position = float(data.get('x_position', 0))  # 実座標（cm）
         face_count = int(data.get('face_count', 1))
-        
-        logger.debug(f"配置リクエスト: 商品ID={product_id}, 段ID={segment_id}, X={x_position}cm, フェース={face_count}")
         
         shelf = get_object_or_404(Shelf, id=shelf_id)
         segment = get_object_or_404(ShelfSegment, id=segment_id, shelf=shelf)
         product = get_object_or_404(Product, id=product_id)
         
         # 配置可能かチェック
-        required_width = product.get_occupied_width(face_count)
         if not segment.can_fit_product(product, face_count):
             return JsonResponse({
                 'success': False, 
-                'error': f'商品を配置できません（段高さ: {segment.height}cm < 商品高さ: {product.height}cm または 利用可能幅: {segment.available_width}cm < 必要幅: {required_width}cm）'
+                'error': '商品を配置できません（サイズまたは幅が不足）'
             })
         
-        # 座標の正規化と範囲チェック
+        # 重複チェック
+        required_width = product.width * face_count
         start_x = max(0, x_position)
-        end_x = round_decimal(start_x + required_width)
+        end_x = start_x + required_width
+        
+        # 既存の配置との重複をチェック
+        overlapping = ProductPlacement.objects.filter(
+            segment=segment
+        )
+        
+        for existing_placement in overlapping:
+            existing_start = existing_placement.x_position
+            existing_end = existing_start + existing_placement.occupied_width
+            
+            # 重複判定
+            if end_x > existing_start and start_x < existing_end:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'商品「{existing_placement.product.name}」と重複する位置です'
+                })
         
         # 棚幅チェック
         if end_x > shelf.width:
             return JsonResponse({
                 'success': False,
-                'error': f'棚幅を超えています（配置範囲: {start_x:.1f}-{end_x:.1f}cm, 棚幅: {shelf.width}cm）'
+                'error': f'棚幅を超えています（必要: {required_width}cm, 利用可能: {shelf.width - start_x}cm）'
             })
-        
-        # 重複チェック（新しいロジック）
-        existing_ranges = segment.get_placement_ranges()
-        for range_info in existing_ranges:
-            existing_start = range_info['start']
-            existing_end = range_info['end']
-            existing_placement = range_info['placement']
-            
-            # 許容誤差0.05cmで重複判定
-            tolerance = 0.05
-            if (end_x > existing_start + tolerance) and (start_x < existing_end - tolerance):
-                logger.warning(f"重複検出: 新配置[{start_x:.1f}-{end_x:.1f}] vs 既存[{existing_start:.1f}-{existing_end:.1f}] ({existing_placement.product.name})")
-                return JsonResponse({
-                    'success': False,
-                    'error': f'商品「{existing_placement.product.name}」と重複する位置です（新配置: {start_x:.1f}-{end_x:.1f}cm, 既存: {existing_start:.1f}-{existing_end:.1f}cm）'
-                })
         
         # 配置順序を設定
         max_order_result = ProductPlacement.objects.filter(segment=segment).aggregate(
@@ -149,22 +148,13 @@ def place_product_ajax(request):
             placement_order=max_order + 1
         )
         
-        logger.info(f"商品配置成功: {product.name} 段{segment.level} X={start_x:.1f}cm 幅={placement.occupied_width:.1f}cm フェース={face_count}")
-        
         return JsonResponse({
             'success': True,
             'placement_id': placement.id,
-            'message': f'{product.name} を配置しました（位置: {start_x:.1f}cm, {face_count}フェース）',
-            'debug_info': {
-                'x_position': start_x,
-                'end_position': end_x,
-                'occupied_width': placement.occupied_width,
-                'face_count': face_count
-            }
+            'message': f'{product.name} を配置しました（位置: {start_x:.1f}cm, {face_count}フェース）'
         })
         
     except Exception as e:
-        logger.error(f"配置エラー: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': f'配置エラー: {str(e)}'
@@ -174,18 +164,16 @@ def place_product_ajax(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_placement_ajax(request):
-    """商品配置更新のAjax処理（完全修正版）"""
+    """商品配置更新のAjax処理"""
     try:
         data = json.loads(request.body)
         placement_id = data.get('placement_id')
-        x_position = data.get('x_position')
+        x_position = data.get('x_position')  # 実座標（cm）
         face_count = data.get('face_count')
-        face_count_change = data.get('face_count_change')
-        segment_id = data.get('segment_id')
+        face_count_change = data.get('face_count_change')  # フェーシング変更用
+        segment_id = data.get('segment_id')  # 段間移動用
         
         placement = get_object_or_404(ProductPlacement, id=placement_id)
-        
-        logger.debug(f"配置更新リクエスト: ID={placement_id}, X={x_position}, フェース={face_count}, 変更={face_count_change}, 段={segment_id}")
         
         # 段間移動の場合
         if segment_id is not None:
@@ -195,73 +183,69 @@ def update_placement_ajax(request):
             if not new_segment.can_fit_product(placement.product, placement.face_count):
                 return JsonResponse({
                     'success': False,
-                    'error': f'段{new_segment.level}には商品が収まりません（段高さ: {new_segment.height}cm < 商品高さ: {placement.product.height}cm）'
+                    'error': f'段{new_segment.level}には商品が収まりません（高さ制限）'
                 })
             
+            # 段を変更
             placement.segment = new_segment
-            logger.debug(f"段移動: 段{placement.segment.level} → 段{new_segment.level}")
+        
+        # 現在の値を取得
+        current_x = placement.x_position
+        current_face_count = placement.face_count
         
         # 新しい値を決定
         if x_position is not None:
-            new_x_position = round_decimal(float(x_position))
+            new_x_position = float(x_position)  # 実座標（cm）
         else:
-            new_x_position = placement.x_position
+            new_x_position = current_x
             
         if face_count is not None:
-            new_face_count = max(1, min(10, int(face_count)))
+            new_face_count = int(face_count)
         elif face_count_change is not None:
-            new_face_count = max(1, min(10, placement.face_count + int(face_count_change)))
+            max_face_count = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_FACE_COUNT', 20)
+            new_face_count = max(1, min(max_face_count, current_face_count + int(face_count_change)))
         else:
-            new_face_count = placement.face_count
+            new_face_count = current_face_count
         
-        # 新しい配置での制約チェック
-        new_required_width = placement.product.get_occupied_width(new_face_count)
-        new_end_x = round_decimal(new_x_position + new_required_width)
+        # 新しい値での制約チェック
+        required_width = placement.product.width * new_face_count
+        start_x = max(0, new_x_position)
+        end_x = start_x + required_width
         
         # 棚幅チェック
-        if new_end_x > placement.shelf.width:
+        if end_x > placement.shelf.width:
             return JsonResponse({
                 'success': False,
-                'error': f'棚幅を超えています（配置範囲: {new_x_position:.1f}-{new_end_x:.1f}cm, 棚幅: {placement.shelf.width}cm）'
+                'error': f'棚幅を超えています（必要: {required_width}cm, 棚幅: {placement.shelf.width}cm）'
             })
         
-        # 重複チェック（自分以外との重複）
-        existing_ranges = placement.segment.get_placement_ranges(exclude_placement=placement)
-        for range_info in existing_ranges:
-            existing_start = range_info['start']
-            existing_end = range_info['end']
-            existing_placement = range_info['placement']
+        # 他の配置との重複チェック（自分以外）
+        overlapping = ProductPlacement.objects.filter(
+            segment=placement.segment
+        ).exclude(pk=placement.pk)
+        
+        for existing_placement in overlapping:
+            existing_start = existing_placement.x_position
+            existing_end = existing_start + existing_placement.occupied_width
             
-            tolerance = 0.05
-            if (new_end_x > existing_start + tolerance) and (new_x_position < existing_end - tolerance):
-                logger.warning(f"更新時重複検出: 新位置[{new_x_position:.1f}-{new_end_x:.1f}] vs 既存[{existing_start:.1f}-{existing_end:.1f}] ({existing_placement.product.name})")
+            if end_x > existing_start and start_x < existing_end:
                 return JsonResponse({
                     'success': False,
-                    'error': f'商品「{existing_placement.product.name}」と重複します（移動先: {new_x_position:.1f}-{new_end_x:.1f}cm, 既存: {existing_start:.1f}-{existing_end:.1f}cm）'
+                    'error': f'商品「{existing_placement.product.name}」と重複します'
                 })
         
-        # 安全な更新実行
-        success, error_message = placement.update_position(new_x_position, new_face_count)
+        # 更新実行
+        placement.x_position = start_x
+        placement.face_count = new_face_count
+        placement.save()
         
-        if success:
-            return JsonResponse({
-                'success': True,
-                'message': f'配置を更新しました（位置: {placement.x_position:.1f}cm, {placement.face_count}フェース）',
-                'new_face_count': placement.face_count,
-                'debug_info': {
-                    'final_position': f'{placement.x_position:.1f}-{placement.get_end_position():.1f}cm',
-                    'occupied_width': placement.occupied_width,
-                    'face_count': placement.face_count
-                }
-            })
-        else:
-            return JsonResponse({
-                'success': False,
-                'error': error_message or '配置の更新に失敗しました'
-            })
+        return JsonResponse({
+            'success': True,
+            'message': f'配置を更新しました（位置: {start_x:.1f}cm, {new_face_count}フェース）',
+            'new_face_count': new_face_count
+        })
         
     except Exception as e:
-        logger.error(f"配置更新エラー: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': f'更新エラー: {str(e)}'
@@ -278,8 +262,6 @@ def delete_placement_ajax(request):
         
         placement = get_object_or_404(ProductPlacement, id=placement_id)
         product_name = placement.product.name
-        
-        logger.info(f"配置削除: {product_name} (ID={placement_id})")
         placement.delete()
         
         return JsonResponse({
@@ -288,7 +270,6 @@ def delete_placement_ajax(request):
         })
         
     except Exception as e:
-        logger.error(f"削除エラー: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': f'削除エラー: {str(e)}'
@@ -306,10 +287,26 @@ def shelf_segment_edit(request, shelf_id):
                 y_pos = 0
                 updated_segments = []
                 
+                # 設定から段高さの制限を取得
+                min_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MIN_SEGMENT_HEIGHT', 15.0)
+                max_height = getattr(settings, 'SHELF_SETTINGS', {}).get('MAX_SEGMENT_HEIGHT', 60.0)
+                
                 for segment in segments:
                     height_key = f'height_{segment.id}'
                     if height_key in request.POST:
                         new_height = float(request.POST.get(height_key, segment.height))
+                        
+                        # 高さ制限チェック
+                        if new_height < min_height or new_height > max_height:
+                            messages.error(
+                                request, 
+                                f'段高さは{min_height}cm以上{max_height}cm以下である必要があります。'
+                            )
+                            return render(request, 'shelf/shelf_segment_edit.html', {
+                                'shelf': shelf,
+                                'segments': segments,
+                                'title': f'段高さ編集 - {shelf.name}'
+                            })
                         
                         # 配置済み商品の高さチェック
                         max_height_result = segment.placements.aggregate(
@@ -339,7 +336,6 @@ def shelf_segment_edit(request, shelf_id):
                 return redirect('shelf:detail', shelf_id=shelf.id)
                 
         except Exception as e:
-            logger.error(f"段高さ更新エラー: {str(e)}", exc_info=True)
             messages.error(request, f'段高さの更新に失敗しました: {str(e)}')
     
     context = {
@@ -374,8 +370,6 @@ def clear_all_placements_ajax(request):
         
         shelf = get_object_or_404(Shelf, id=shelf_id)
         deleted_count = ProductPlacement.objects.filter(shelf=shelf).count()
-        
-        logger.info(f"全配置削除: 棚「{shelf.name}」から{deleted_count}個の配置を削除")
         ProductPlacement.objects.filter(shelf=shelf).delete()
         
         return JsonResponse({
@@ -384,45 +378,7 @@ def clear_all_placements_ajax(request):
         })
         
     except Exception as e:
-        logger.error(f"全削除エラー: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': f'削除エラー: {str(e)}'
         })
-
-
-def debug_placement_info(request, shelf_id):
-    """デバッグ用：配置情報の詳細表示"""
-    if not request.user.is_staff:  # スタッフユーザーのみ
-        return JsonResponse({'error': 'Permission denied'})
-    
-    shelf = get_object_or_404(Shelf, id=shelf_id)
-    segments_info = []
-    
-    for segment in shelf.segments.all():
-        placements_info = []
-        for placement in segment.placements.all():
-            placements_info.append({
-                'id': placement.id,
-                'product_name': placement.product.name,
-                'product_width': placement.product.width,
-                'x_position': placement.x_position,
-                'face_count': placement.face_count,
-                'occupied_width': placement.occupied_width,
-                'calculated_width': placement.product.get_occupied_width(placement.face_count),
-                'end_position': placement.get_end_position(),
-                'range': f'{placement.x_position:.1f}-{placement.get_end_position():.1f}cm'
-            })
-        
-        segments_info.append({
-            'level': segment.level,
-            'height': segment.height,
-            'available_width': segment.available_width,
-            'placements': placements_info
-        })
-    
-    return JsonResponse({
-        'shelf_name': shelf.name,
-        'shelf_width': shelf.width,
-        'segments': segments_info
-    })
