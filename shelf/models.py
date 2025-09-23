@@ -1,8 +1,16 @@
-# shelf/models.py
+# shelf/models.py 完全修正版
 
 from django.db import models
 from django.core.validators import MinValueValidator
-from decimal import Decimal
+from django.core.exceptions import ValidationError
+from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+logger = logging.getLogger(__name__)
+
+def round_decimal(value, precision=1):
+    """Decimalで正確な四捨五入を行う"""
+    return float(Decimal(str(value)).quantize(Decimal(f'0.{"0" * precision}'), rounding=ROUND_HALF_UP))
 
 
 class Product(models.Model):
@@ -26,6 +34,10 @@ class Product(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.maker})" if self.maker else self.name
+
+    def get_occupied_width(self, face_count=1):
+        """指定フェース数での占有幅を正確に計算"""
+        return round_decimal(self.width * face_count)
 
 
 class Shelf(models.Model):
@@ -80,13 +92,32 @@ class ShelfSegment(models.Model):
     def available_width(self):
         """この段の利用可能な幅を返す"""
         used_width = sum(placement.occupied_width for placement in self.placements.all())
-        return max(0, self.shelf.width - used_width)
+        return max(0, round_decimal(self.shelf.width - used_width))
 
     def can_fit_product(self, product, face_count=1):
         """商品が配置可能かチェック"""
-        required_width = product.width * face_count
+        required_width = product.get_occupied_width(face_count)
         return (product.height <= self.height and 
                 required_width <= self.available_width)
+
+    def get_placement_ranges(self, exclude_placement=None):
+        """この段の全ての配置範囲を取得（重複チェック用）"""
+        placements = self.placements.all()
+        if exclude_placement:
+            placements = placements.exclude(pk=exclude_placement.pk)
+        
+        ranges = []
+        for placement in placements:
+            start = round_decimal(placement.x_position)
+            end = round_decimal(start + placement.occupied_width)
+            ranges.append({
+                'start': start,
+                'end': end,
+                'placement': placement
+            })
+        
+        logger.debug(f"段{self.level}の配置範囲: {ranges}")
+        return ranges
 
 
 class ProductPlacement(models.Model):
@@ -110,46 +141,104 @@ class ProductPlacement(models.Model):
         return f"{self.shelf.name} - {self.product.name} (×{self.face_count})"
 
     def save(self, *args, **kwargs):
-        # 占有幅を自動計算
-        self.occupied_width = self.product.width * self.face_count
+        # X座標と占有幅を正確に計算
+        self.x_position = round_decimal(self.x_position)
+        self.occupied_width = self.product.get_occupied_width(self.face_count)
+        
+        logger.debug(f"配置保存: {self.product.name} X={self.x_position}cm 幅={self.occupied_width}cm フェース={self.face_count}")
+        
         super().save(*args, **kwargs)
 
     def clean(self):
-        """配置制約のバリデーション"""
-        from django.core.exceptions import ValidationError
-        
+        """配置制約のバリデーション（完全修正版）"""
         errors = []
+        
+        # 基本的な値の正規化
+        if hasattr(self, 'x_position'):
+            self.x_position = round_decimal(self.x_position)
         
         # 高さチェック
         if self.product.height > self.segment.height:
             errors.append("商品高さが段高さを超えています")
         
-        # 幅チェック
-        required_width = self.product.width * self.face_count
-        if self.x_position + required_width > self.shelf.width:
-            errors.append("段幅を超える配置です")
+        # 占有幅を正確に計算
+        required_width = self.product.get_occupied_width(self.face_count)
+        end_position = round_decimal(self.x_position + required_width)
         
-        # 重複チェック（自分以外の配置と重複しないかチェック）
-        overlapping_placements = ProductPlacement.objects.filter(
-            segment=self.segment
-        ).exclude(pk=self.pk if self.pk else None)
+        # 棚幅チェック
+        if end_position > self.shelf.width:
+            errors.append(f"段幅を超える配置です (配置範囲: {self.x_position:.1f}-{end_position:.1f}cm, 棚幅: {self.shelf.width}cm)")
         
-        for placement in overlapping_placements:
-            if self._check_overlap(placement):
-                errors.append(f"他の商品「{placement.product.name}」と重複しています")
-                break
+        # 重複チェック（修正版）
+        overlapping_placement = self._find_overlapping_placement()
+        if overlapping_placement:
+            errors.append(f"他の商品「{overlapping_placement.product.name}」と重複しています")
         
         if errors:
             raise ValidationError(errors)
 
-    def _check_overlap(self, other_placement):
-        """他の配置との重複をチェック"""
-        self_start = self.x_position
-        self_end = self.x_position + (self.product.width * self.face_count)
-        other_start = other_placement.x_position
-        other_end = other_placement.x_position + other_placement.occupied_width
+    def _find_overlapping_placement(self, tolerance=0.05):
+        """重複する配置を検索（許容誤差あり）"""
+        self_start = round_decimal(self.x_position)
+        self_end = round_decimal(self_start + self.product.get_occupied_width(self.face_count))
         
-        return not (self_end <= other_start or other_end <= self_start)
+        # 自分以外の配置をチェック
+        other_placements = ProductPlacement.objects.filter(
+            segment=self.segment
+        ).exclude(pk=self.pk if self.pk else None)
+        
+        for other_placement in other_placements:
+            other_start = round_decimal(other_placement.x_position)
+            other_end = round_decimal(other_start + other_placement.occupied_width)
+            
+            # 許容誤差を考慮した重複判定
+            is_overlapping = (
+                (self_end > other_start + tolerance) and 
+                (self_start < other_end - tolerance)
+            )
+            
+            logger.debug(f"重複チェック: {self.product.name}[{self_start:.1f}-{self_end:.1f}] vs {other_placement.product.name}[{other_start:.1f}-{other_end:.1f}] -> {is_overlapping}")
+            
+            if is_overlapping:
+                return other_placement
+        
+        return None
+
+    def get_end_position(self):
+        """配置の終了位置を取得"""
+        return round_decimal(self.x_position + self.occupied_width)
+
+    def update_position(self, new_x_position, new_face_count=None):
+        """位置とフェース数を安全に更新"""
+        old_x = self.x_position
+        old_face_count = self.face_count
+        
+        try:
+            # 新しい値を設定
+            self.x_position = round_decimal(new_x_position)
+            if new_face_count is not None:
+                self.face_count = max(1, int(new_face_count))
+            
+            # バリデーション実行
+            self.clean()
+            self.save()
+            
+            logger.info(f"配置更新成功: {self.product.name} {old_x:.1f}→{self.x_position:.1f}cm フェース{old_face_count}→{self.face_count}")
+            return True, None
+            
+        except ValidationError as e:
+            # エラー時は元の値に戻す
+            self.x_position = old_x
+            self.face_count = old_face_count
+            error_message = '; '.join(e.messages) if hasattr(e, 'messages') else str(e)
+            logger.warning(f"配置更新失敗: {self.product.name} - {error_message}")
+            return False, error_message
+        except Exception as e:
+            # 予期しないエラー
+            self.x_position = old_x
+            self.face_count = old_face_count
+            logger.error(f"配置更新エラー: {self.product.name} - {str(e)}")
+            return False, f"更新エラー: {str(e)}"
 
 
 class ShelfTemplate(models.Model):

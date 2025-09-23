@@ -178,3 +178,86 @@ MESSAGE_TAGS = {
 # ファイルアップロード設定
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'debug': {
+            'format': '{levelname} {asctime} {module}.{funcName}:{lineno} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple' if DEBUG else 'verbose',
+            'level': 'DEBUG' if DEBUG else 'INFO',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'debug.log',
+            'formatter': 'debug',
+            'level': 'DEBUG',
+        },
+        'placement_file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'placement_debug.log',
+            'formatter': 'debug',
+            'level': 'DEBUG',
+        },
+    },
+    'loggers': {
+        'shelf': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'shelf.models': {
+            'handlers': ['console', 'placement_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'shelf.views': {
+            'handlers': ['console', 'placement_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+}
+
+# 座標の精度設定
+COORDINATE_PRECISION = 1  # 小数点以下の桁数
+
+# デバッグ用の設定
+if DEBUG:
+    # デバッグ用ミドルウェアを追加（必要に応じて）
+    MIDDLEWARE += [
+        # 'debug_toolbar.middleware.DebugToolbarMiddleware',  # django-debug-toolbarを使用する場合
+    ]
+    
+    # デバッグ用の内部IP
+    INTERNAL_IPS = [
+        '127.0.0.1',
+        'localhost',
+    ]
+
+# カスタムバリデーションメッセージ
+COORDINATE_VALIDATION_MESSAGES = {
+    'overlap_tolerance': 0.05,  # 重複判定の許容誤差（cm）
+    'grid_snap_size': 2.0,      # グリッドスナップサイズ（cm）
+    'min_product_gap': 0.1,     # 商品間の最小間隔（cm）
+}
+
